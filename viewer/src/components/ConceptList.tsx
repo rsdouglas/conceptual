@@ -1,4 +1,4 @@
-import type { ConceptModel } from '../../../src/types/model';
+import type { ConceptModel } from '../../../conceptual/src/types/model';
 
 interface Props {
   model: ConceptModel;

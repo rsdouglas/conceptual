@@ -1,0 +1,976 @@
+{
+  "repoRoot": "/Users/rs/repos/spot",
+  "generatedAt": "2025-11-26T12:28:37.373Z",
+  "concepts": [
+    {
+      "metadata": {
+        "name": "Artifact",
+        "type": "aggregate_root",
+        "boundedContext": "Meeting Management",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents various types of artifacts (research, custom, image) created, processed, and managed within meetings.",
+        "ubiquitousLanguage": "Artifact refers to any content piece generated or managed during a meeting, including research notes, custom content, and images."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Human-readable name of the artifact"
+          },
+          {
+            "name": "slug",
+            "type": "string",
+            "description": "Unique, immutable identifier for the artifact"
+          },
+          {
+            "name": "type",
+            "type": "'research' | 'custom' | 'image'",
+            "description": "Specifies the artifact subtype"
+          },
+          {
+            "name": "instructions",
+            "type": "string",
+            "description": "Instructions or prompts used to create the artifact"
+          },
+          {
+            "name": "text",
+            "type": "string",
+            "description": "Main content of the artifact (for research and custom types)"
+          },
+          {
+            "name": "url",
+            "type": "string",
+            "description": "URL to the generated image (for image artifacts)"
+          },
+          {
+            "name": "status",
+            "type": "'pending' | 'in_progress' | 'completed' | 'failed'",
+            "description": "Current processing status of the artifact"
+          },
+          {
+            "name": "format",
+            "type": "'markdown' | 'html'",
+            "description": "Content format of the artifact"
+          },
+          {
+            "name": "sources",
+            "type": "Array<{ uri?: string; title?: string; snippet?: string }>",
+            "description": "Optional list of source references for research or custom artifacts"
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "description": "Optional descriptive text about the artifact"
+          },
+          {
+            "name": "errorMessage",
+            "type": "string",
+            "description": "Error details if artifact processing failed"
+          },
+          {
+            "name": "createdAt",
+            "type": "number",
+            "description": "Timestamp when artifact was created"
+          },
+          {
+            "name": "updatedAt",
+            "type": "number",
+            "description": "Timestamp when artifact was last updated"
+          },
+          {
+            "name": "prompt",
+            "type": "string",
+            "description": "Prompt used for image generation (image artifacts only)"
+          },
+          {
+            "name": "aspectRatio",
+            "type": "'1:1' | '16:9' | '9:16' | '4:3' | '3:4'",
+            "description": "Aspect ratio of the image artifact"
+          },
+          {
+            "name": "mimeType",
+            "type": "string",
+            "description": "MIME type of the image artifact"
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Artifacts belong to a MeetingState which manages their lifecycle and status."
+          },
+          {
+            "description": "CustomArtifact is a subtype of Artifact with specific fields and status management."
+          },
+          {
+            "description": "ArtifactService manages operations such as finding pending artifacts, marking them in progress, and executing artifact creation."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "pending -> in_progress",
+          "in_progress -> completed",
+          "in_progress -> failed",
+          "failed -> pending (retry possible)"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "slug must be unique and immutable for each artifact",
+          "notes": "Used as the primary identifier for artifact operations"
+        },
+        {
+          "rule": "status must be one of the defined states",
+          "notes": "Ensures consistent lifecycle management"
+        },
+        {
+          "rule": "type must be one of 'research', 'custom', or 'image'",
+          "notes": "Defines the artifact subtype and associated fields"
+        }
+      ],
+      "commands": [
+        {
+          "name": "findPendingArtifacts",
+          "description": "Retrieve all custom artifacts currently in 'pending' status"
+        },
+        {
+          "name": "markInProgress",
+          "description": "Mark specified artifacts as 'in_progress' to prevent duplicate processing"
+        },
+        {
+          "name": "executeBatch",
+          "description": "Execute a batch of artifact creation or update requests"
+        }
+      ],
+      "events": [
+        {
+          "name": "artifact.start",
+          "description": "Triggered when artifact generation begins"
+        },
+        {
+          "name": "artifact.update.start",
+          "description": "Triggered when artifact update begins"
+        },
+        {
+          "name": "artifact.completed",
+          "description": "Triggered when artifact generation completes successfully"
+        },
+        {
+          "name": "artifact.failed",
+          "description": "Triggered when artifact generation fails"
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Artifact Service Implementation",
+          "path": "apps/api/src/artifacts/service.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Artifact Types and Interfaces",
+          "path": "apps/api/src/meeting/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Artifact Execution Logic",
+          "path": "apps/api/src/artifacts/executor.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "Meeting",
+        "type": "aggregate_root",
+        "boundedContext": "Meeting Domain",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents the meeting domain including participants, agenda, sections, notes, and state management.",
+        "ubiquitousLanguage": "Meeting, Participant, Artifact, ResearchArtifact, CustomArtifact, ImageArtifact, MeetingState, LlmContext, ProcessMeetingResult"
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "participants",
+            "type": "MeetingParticipant[]",
+            "description": "List of participants involved in the meeting, including host information."
+          },
+          {
+            "name": "agenda",
+            "type": "string[]",
+            "description": "Agenda items or sections of the meeting."
+          },
+          {
+            "name": "notes",
+            "type": "string",
+            "description": "Notes generated or taken during the meeting."
+          },
+          {
+            "name": "state",
+            "type": "MeetingState",
+            "description": "Current state of the meeting including artifacts and progress."
+          },
+          {
+            "name": "artifacts",
+            "type": "MeetingArtifact[]",
+            "description": "Collection of artifacts related to the meeting such as research, custom content, and images."
+          },
+          {
+            "name": "title",
+            "type": "string",
+            "description": "Title of the meeting."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Meeting aggregates multiple MeetingParticipants who can be hosts or attendees."
+          },
+          {
+            "description": "Meeting contains multiple Artifacts (ResearchArtifact, CustomArtifact, ImageArtifact) representing outputs or content generated during the meeting."
+          },
+          {
+            "description": "MeetingState manages the lifecycle and current data of the meeting including artifacts and notes."
+          },
+          {
+            "description": "LlmContext provides contextual information such as meeting title, participants, and chat text to support processing."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "pending -> in_progress",
+          "in_progress -> completed",
+          "in_progress -> failed",
+          "failed -> in_progress"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each artifact must have a unique and immutable slug identifier.",
+          "notes": "Ensures artifacts can be reliably referenced and updated."
+        },
+        {
+          "rule": "At least one participant must be marked as host.",
+          "notes": "A meeting requires a host to manage or lead the session."
+        },
+        {
+          "rule": "Artifact status must be one of 'pending', 'in_progress', 'completed', or 'failed'.",
+          "notes": "Maintains consistent artifact lifecycle states."
+        }
+      ],
+      "commands": [
+        {
+          "name": "AddParticipant",
+          "description": "Add a new participant to the meeting."
+        },
+        {
+          "name": "RemoveParticipant",
+          "description": "Remove an existing participant from the meeting."
+        },
+        {
+          "name": "UpdateMeetingState",
+          "description": "Update the current state of the meeting including artifacts and notes."
+        },
+        {
+          "name": "AddArtifact",
+          "description": "Add a new artifact (research, custom, or image) to the meeting."
+        },
+        {
+          "name": "ProcessMeetingState",
+          "description": "Process the meeting state using LLM environment and context to generate notes, artifacts, and updates."
+        }
+      ],
+      "events": [
+        {
+          "name": "ParticipantAdded",
+          "description": "Triggered when a participant is added to the meeting."
+        },
+        {
+          "name": "ParticipantRemoved",
+          "description": "Triggered when a participant is removed from the meeting."
+        },
+        {
+          "name": "ArtifactCreated",
+          "description": "Triggered when a new artifact is created and added to the meeting."
+        },
+        {
+          "name": "MeetingStateProcessed",
+          "description": "Triggered after the meeting state has been processed and updated."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Meeting Types",
+          "path": "apps/api/src/meeting/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Meeting Orchestrator",
+          "path": "apps/api/src/meeting/orchestrator.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "Session",
+        "type": "aggregate_root",
+        "boundedContext": "User Session Management",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents user sessions including state, scheduling, broadcasting, and session lifecycle management.",
+        "ubiquitousLanguage": "Session, SessionState, Participants, Transcript, Broadcast, Scheduling, Lifecycle, Cost, Assistant, Camera"
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "sessionId",
+            "type": "string",
+            "description": "Unique identifier for the session."
+          },
+          {
+            "name": "notes",
+            "type": "string",
+            "description": "Session notes or annotations."
+          },
+          {
+            "name": "stateV2",
+            "type": "MeetingState",
+            "description": "Current detailed meeting state including transcript, sections, and artifacts."
+          },
+          {
+            "name": "cameraEnabled",
+            "type": "boolean",
+            "description": "Flag indicating if camera view is enabled."
+          },
+          {
+            "name": "clients",
+            "type": "Set<WritableStreamDefaultWriter>",
+            "description": "Set of connected client streams for broadcasting session updates."
+          },
+          {
+            "name": "debugClients",
+            "type": "Set<WritableStreamDefaultWriter>",
+            "description": "Set of debug client streams."
+          },
+          {
+            "name": "dirty",
+            "type": "boolean",
+            "description": "Indicates if the session state has unsaved changes."
+          },
+          {
+            "name": "lastLLMAt",
+            "type": "number",
+            "description": "Timestamp of last large language model (LLM) interaction."
+          },
+          {
+            "name": "nextScheduledAt",
+            "type": "number|null",
+            "description": "Timestamp for next scheduled summarization or processing."
+          },
+          {
+            "name": "llmGenerationCounter",
+            "type": "number",
+            "description": "Counter for LLM generation attempts."
+          },
+          {
+            "name": "latestAppliedGeneration",
+            "type": "number",
+            "description": "Latest applied generation number from LLM."
+          },
+          {
+            "name": "debugLog",
+            "type": "DebugLog",
+            "description": "Debug logging utility for session events."
+          },
+          {
+            "name": "recallBotId",
+            "type": "string|undefined",
+            "description": "Identifier for associated recall bot."
+          },
+          {
+            "name": "cameraUrl",
+            "type": "string|undefined",
+            "description": "URL for camera feed if applicable."
+          },
+          {
+            "name": "orgId",
+            "type": "string|undefined",
+            "description": "Organization identifier owning the session."
+          },
+          {
+            "name": "deleted",
+            "type": "boolean",
+            "description": "Flag indicating if the session is deleted."
+          },
+          {
+            "name": "botStatus",
+            "type": "{ code: string; subCode?: string | null; updatedAt?: string | null } | null",
+            "description": "Current status of the assistant bot."
+          },
+          {
+            "name": "costTotals",
+            "type": "{ inputCostUsd: number; thinkingCostUsd: number; outputCostUsd: number; totalCostUsd: number; byModel: Record<string, number> }",
+            "description": "Cost tracking for LLM usage and other session-related expenses."
+          },
+          {
+            "name": "participants",
+            "type": "Map<string, { id: string; name: string; lastSeenAtMs: number }>",
+            "description": "Map of participant IDs to participant details."
+          },
+          {
+            "name": "chat",
+            "type": "Array<{ ts: number; participantId?: string; participantName?: string; text: string }>",
+            "description": "Chat messages within the session."
+          },
+          {
+            "name": "startedAtMs",
+            "type": "number|undefined",
+            "description": "Timestamp when the session started."
+          },
+          {
+            "name": "endedAtMs",
+            "type": "number|undefined",
+            "description": "Timestamp when the session ended."
+          },
+          {
+            "name": "assistant",
+            "type": "{ isRunning: boolean; streamBegan: boolean; gen: number | null }",
+            "description": "Assistant bot runtime state."
+          },
+          {
+            "name": "context",
+            "type": "string",
+            "description": "Contextual information for the session."
+          },
+          {
+            "name": "seq",
+            "type": "number",
+            "description": "Sequence number for broadcast events."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "SessionState manages the internal state and lifecycle of a Session aggregate root."
+          },
+          {
+            "description": "Session interacts with connected clients via broadcasting events such as notes, camera updates, transcripts, and assistant status."
+          },
+          {
+            "description": "Session persists data to the database via upsertSession, including participants, costs, timestamps, and identifiers."
+          },
+          {
+            "description": "Session schedules summarization and other periodic tasks using alarms and scheduling logic."
+          },
+          {
+            "description": "Session coordinates with assistant bot components and camera handlers."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "active",
+          "scheduled",
+          "ended",
+          "deleted"
+        ],
+        "validTransitions": [
+          "initialized -> active",
+          "active -> scheduled",
+          "scheduled -> active",
+          "active -> ended",
+          "active -> deleted",
+          "scheduled -> deleted"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Session must have a unique sessionId.",
+          "notes": "Ensures identity and consistency across storage and broadcasting."
+        },
+        {
+          "rule": "Deleted sessions must reject all requests except idempotent delete operations.",
+          "notes": "Prevents operations on removed sessions."
+        },
+        {
+          "rule": "Broadcast sequence number (seq) must increment monotonically.",
+          "notes": "Ensures clients receive ordered event streams."
+        },
+        {
+          "rule": "Session state must be loaded from storage before processing requests.",
+          "notes": "Prevents stale or inconsistent state handling."
+        },
+        {
+          "rule": "Cost totals must be accurately tracked and persisted.",
+          "notes": "Supports billing and usage reporting."
+        },
+        {
+          "rule": "Scheduling alarms must respect minimum intervals to avoid excessive LLM calls.",
+          "notes": "Protects system resources and rate limits."
+        }
+      ],
+      "commands": [
+        {
+          "name": "fetch",
+          "description": "Handles incoming HTTP requests to the session Durable Object, routing to appropriate handlers."
+        },
+        {
+          "name": "handleDelete",
+          "description": "Deletes the session, marking it as deleted and cleaning up resources."
+        },
+        {
+          "name": "handleInit",
+          "description": "Initializes a new session with starting parameters."
+        },
+        {
+          "name": "handleIngest",
+          "description": "Processes incoming transcript or data ingestion."
+        },
+        {
+          "name": "handleNotes",
+          "description": "Updates session notes."
+        },
+        {
+          "name": "handleCamera",
+          "description": "Manages camera state and updates."
+        },
+        {
+          "name": "handleStatus",
+          "description": "Returns current session status."
+        },
+        {
+          "name": "maybeScheduleSummarize",
+          "description": "Schedules summarization tasks based on session state and timing constraints."
+        },
+        {
+          "name": "executeAlarm",
+          "description": "Executes scheduled summarization or processing when alarm fires."
+        },
+        {
+          "name": "broadcast",
+          "description": "Sends session state updates to all connected clients."
+        },
+        {
+          "name": "broadcastAssistant",
+          "description": "Sends assistant bot status updates to clients."
+        }
+      ],
+      "events": [
+        {
+          "name": "sessionStarted",
+          "description": "Emitted when a session is initialized and started."
+        },
+        {
+          "name": "sessionEnded",
+          "description": "Emitted when a session is ended."
+        },
+        {
+          "name": "sessionDeleted",
+          "description": "Emitted when a session is marked as deleted."
+        },
+        {
+          "name": "notesUpdated",
+          "description": "Emitted when session notes are updated."
+        },
+        {
+          "name": "transcriptUpdated",
+          "description": "Emitted when new transcript data is ingested."
+        },
+        {
+          "name": "cameraUpdated",
+          "description": "Emitted when camera state or data changes."
+        },
+        {
+          "name": "assistantStatusChanged",
+          "description": "Emitted when assistant bot status changes."
+        },
+        {
+          "name": "sessionBroadcasted",
+          "description": "Emitted when session state is broadcast to clients."
+        },
+        {
+          "name": "sessionSummarized",
+          "description": "Emitted after summarization task completes."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Session Durable Object Implementation",
+          "path": "apps/api/src/sessions/do.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Session State Management",
+          "path": "apps/api/src/sessions/state.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Session Broadcasting Logic",
+          "path": "apps/api/src/sessions/broadcast.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Session Scheduling and Alarm Handling",
+          "path": "apps/api/src/sessions/scheduler.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Session Database Persistence",
+          "path": "apps/api/src/db/sessions.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "Recall",
+        "type": "domain_service",
+        "boundedContext": "Meeting Assistant / Transcript Processing",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Handles normalization and processing of recall webhook payloads and manages recall bot lifecycle and camera control.",
+        "ubiquitousLanguage": "Recall bot, recall webhook payload, normalized transcript, normalized chat, recall session, camera control"
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "RecallNormalizedTranscriptPayload",
+            "type": "interface",
+            "description": "Normalized transcript data from recall webhook including words, participant info, and session context."
+          },
+          {
+            "name": "RecallNormalizedChatPayload",
+            "type": "interface",
+            "description": "Normalized chat message data from recall webhook including text, participant info, and timestamps."
+          },
+          {
+            "name": "RecallNormalizedPayload",
+            "type": "union",
+            "description": "Union type representing either transcript or chat normalized payload."
+          },
+          {
+            "name": "RecallNormalizedStatus",
+            "type": "interface",
+            "description": "Status update payload from recall webhook indicating bot status codes and timestamps."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Recall service consumes raw webhook payloads and normalizes them into RecallNormalizedPayload types."
+          },
+          {
+            "description": "Recall service manages lifecycle of recall bots by creating them with meeting URLs, webhook URLs, and camera URLs."
+          },
+          {
+            "description": "RecallNormalizedPayloads are used downstream for transcript processing, chat handling, and session management."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "BotCreated",
+          "BotActive",
+          "BotError",
+          "BotTerminated"
+        ],
+        "validTransitions": [
+          "BotCreated -> BotActive",
+          "BotActive -> BotError",
+          "BotError -> BotTerminated",
+          "BotActive -> BotTerminated"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Every normalized payload must include a valid botId.",
+          "notes": "Normalization returns null if botId is missing."
+        },
+        {
+          "rule": "Recall bot creation requires valid meetingUrl, webhookUrl, and cameraUrl.",
+          "notes": "API key must be present in environment for authorization."
+        }
+      ],
+      "commands": [
+        {
+          "name": "createRecallBot",
+          "description": "Creates a new recall bot instance with specified meeting URL, webhook URL, camera URL, and optional session ID."
+        }
+      ],
+      "events": [
+        {
+          "name": "transcript.data",
+          "description": "Event emitted when transcript data is available from the recall bot."
+        },
+        {
+          "name": "participant_events.chat_message",
+          "description": "Event emitted when a participant sends a chat message."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Recall webhook normalization and payload types",
+          "path": "apps/api/src/adapters/recall.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Recall bot lifecycle management and creation",
+          "path": "apps/api/src/recall.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "Research",
+        "type": "aggregate_root",
+        "boundedContext": "Research and Meeting Processing",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents research requests and results, including execution and integration with Gemini grounding.",
+        "ubiquitousLanguage": "Research refers to the process of submitting research requests, executing them via an LLM grounded with Google Search, and managing the lifecycle and results of these research tasks within meeting artifacts."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Unique identifier or title of the research request."
+          },
+          {
+            "name": "instructions",
+            "type": "string",
+            "description": "Detailed instructions or topic description for the research."
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "description": "Current state of the research task (e.g., pending, in_progress, completed, failed)."
+          },
+          {
+            "name": "text",
+            "type": "string",
+            "description": "Concise bullet point summary of the research results."
+          },
+          {
+            "name": "sources",
+            "type": "Array<{uri?: string; title?: string; snippet?: string}>",
+            "description": "List of source references used to ground the research results."
+          },
+          {
+            "name": "errorMessage",
+            "type": "string",
+            "description": "Error message if the research execution failed."
+          },
+          {
+            "name": "cost",
+            "type": "{inputCostUsd: number; outputCostUsd: number; totalCostUsd: number; model: string}",
+            "description": "Cost details of the LLM call for the research."
+          },
+          {
+            "name": "updatedAt",
+            "type": "number",
+            "description": "Timestamp of the last update to the research artifact."
+          },
+          {
+            "name": "slug",
+            "type": "string",
+            "description": "Optional unique slug or identifier for the research artifact."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Research artifacts are part of the MeetingState artifacts collection."
+          },
+          {
+            "description": "ResearchService interacts with LLMEnv to execute research requests."
+          },
+          {
+            "description": "Research execution integrates with Gemini LLM via callGeminiWithGrounding for grounded research."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "pending -> in_progress",
+          "in_progress -> completed",
+          "in_progress -> failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "A research artifact must have a unique name or slug within the meeting state.",
+          "notes": "Ensures correct identification and prevents duplicate processing."
+        },
+        {
+          "rule": "Only research artifacts with status 'pending' can be marked 'in_progress'.",
+          "notes": "Prevents duplicate or concurrent execution of the same research task."
+        },
+        {
+          "rule": "Research results must include a concise bullet point summary in Markdown format.",
+          "notes": "Maintains consistency and clarity of research output."
+        }
+      ],
+      "commands": [
+        {
+          "name": "findPendingResearch",
+          "description": "Retrieve all research artifacts currently in 'pending' status."
+        },
+        {
+          "name": "markInProgress",
+          "description": "Mark specified research artifacts as 'in_progress' to lock them for execution."
+        },
+        {
+          "name": "executeBatch",
+          "description": "Execute a batch of research requests and return their results."
+        }
+      ],
+      "events": [
+        {
+          "name": "research.start",
+          "description": "Emitted when a research task begins execution, includes metadata for debugging."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Gemini Grounding Integration",
+          "path": "apps/api/src/research/gemini-grounding.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Research Service",
+          "path": "apps/api/src/research/service.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Research Executor",
+          "path": "apps/api/src/research/executor.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "ImageProcessing",
+        "type": "domain_service",
+        "boundedContext": "MeetingImageManagement",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Handles image generation requests and results, including batch execution and image service management.",
+        "ubiquitousLanguage": "ImageArtifact, ImageRequest, ImageResult, executeBatch, markInProgress, applyResults"
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "env",
+            "type": "LLMEnv",
+            "description": "Environment configuration and credentials required for image generation services."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Interacts with MeetingState to find, update, and apply image artifacts."
+          },
+          {
+            "description": "Uses ImageRequest and ImageResult types to represent image generation inputs and outputs."
+          },
+          {
+            "description": "Delegates image generation execution to executor module functions like executeImageBatch."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "pending -> in_progress",
+          "in_progress -> completed",
+          "in_progress -> failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Only ImageArtifacts with status 'pending' can be marked as 'in_progress'.",
+          "notes": "Ensures images are processed only once per batch execution."
+        },
+        {
+          "rule": "ImageResult must correspond to an existing ImageArtifact by slug.",
+          "notes": "Prevents applying results to non-existent or unrelated artifacts."
+        },
+        {
+          "rule": "Environment variables VERTEX_PROJECT and AI_GATEWAY_BASE must be configured before execution.",
+          "notes": "Required for successful image generation calls."
+        }
+      ],
+      "commands": [
+        {
+          "name": "findPendingImages",
+          "description": "Retrieve all image artifacts in the 'pending' state from a meeting."
+        },
+        {
+          "name": "markInProgress",
+          "description": "Update specified image artifacts' status to 'in_progress' in the meeting state."
+        },
+        {
+          "name": "executeBatch",
+          "description": "Execute a batch of image generation requests asynchronously, returning results."
+        },
+        {
+          "name": "applyResults",
+          "description": "Apply image generation results to the meeting state, updating artifacts accordingly."
+        }
+      ],
+      "events": [
+        {
+          "name": "image.start",
+          "description": "Emitted when an image generation request starts."
+        },
+        {
+          "name": "image.update.start",
+          "description": "Emitted when an image update request starts."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "ImageService domain service implementation",
+          "path": "apps/api/src/image/service.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Image execution logic and types",
+          "path": "apps/api/src/image/executor.ts"
+        }
+      ]
+    }
+  ]
+}

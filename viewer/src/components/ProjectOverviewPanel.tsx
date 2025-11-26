@@ -1,4 +1,4 @@
-import type { ProjectOverview } from '../../../src/types/model';
+import type { ProjectOverview } from '../../../conceptual/src/types/model';
 
 interface Props {
   overview?: ProjectOverview;

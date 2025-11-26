@@ -26,9 +26,9 @@ import {
 // Cache the concept sheet template at module load time
 let CONCEPT_TEMPLATE = '';
 try {
-  // Load from the tool's directory, not the analyzed repo
+  // Load from the root directory (../../.. from /conceptual/src/core/)
   const currentDir = path.dirname(new URL(import.meta.url).pathname);
-  const templatePath = path.join(currentDir, '../../concept-sheet-annotated.md');
+  const templatePath = path.join(currentDir, '../../../concept-sheet-annotated.md');
   CONCEPT_TEMPLATE = fs.readFileSync(templatePath, 'utf8');
 } catch (error) {
   console.warn('⚠️ Could not load concept template, proceeding without it:', error instanceof Error ? error.message : String(error));

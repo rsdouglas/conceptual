@@ -56,6 +56,7 @@ No data or source code leaves your machine.
 ### Install
 
 ```bash
+cd conceptual
 pnpm install
 pnpm build
 ````
@@ -63,6 +64,7 @@ pnpm build
 ### Analyze a codebase
 
 ```bash
+cd conceptual
 pnpm dev analyze /path/to/repo
 ```
 

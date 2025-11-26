@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { ConceptModel } from '../../src/types/model';
+import type { ConceptModel } from '../../conceptual/src/types/model';
 import modelJson from '../concept-model.json';
 import { ConceptDetails } from './components/ConceptDetails';
 import { ConceptList } from './components/ConceptList';
