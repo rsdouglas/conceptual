@@ -1,0 +1,29 @@
+Business Source License 1.1
+
+Parameters
+Licensor: Ross Douglas
+Licensed Work: Conceptual – domain concept extraction and visualization tool
+Change Date: 2028-01-01
+Change License: Apache License, Version 2.0
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative 
+works, redistribute, and make non-production use of the Licensed Work.
+
+Production use of the Licensed Work is allowed, provided that you do not 
+provide the Licensed Work to third parties as a hosted or managed service 
+that is competitive with the Licensor’s offering.
+
+After the Change Date, this License will automatically convert to the 
+Change License.
+
+For clarity, “production use” refers to use within your own organization 
+for business purposes. “Competitive service” means offering the Licensed 
+Work, or substantial portions of it, as a product or service that competes 
+directly with the Licensor’s products.
+
+THE LICENSED WORK IS PROVIDED "AS IS" WITHOUT WARRANTIES OR CONDITIONS OF 
+ANY KIND.
+
+For more details, see https://mariadb.com/bsl11/
