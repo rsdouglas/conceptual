@@ -1,0 +1,3331 @@
+{
+  "repoRoot": "/Users/rs/repos/gcp-data-request",
+  "generatedAt": "2025-11-26T15:28:21.293Z",
+  "projectOverview": {
+    "summary": "This project implements a system for managing, executing, and evaluating data requests and test templates using generative AI models, integrated with Slack for communication and interaction. It provides a web-based UI for users to create, manage, and review data requests and test cases, supported by backend services and workers that handle test execution, templating, and AI model interactions.",
+    "systemContext": {
+      "externalSystems": [
+        {
+          "name": "Slack",
+          "description": "Used for user interaction, notifications, and thread management via Slack API",
+          "direction": "bidirectional"
+        },
+        {
+          "name": "Google Cloud Platform (GCP)",
+          "description": "Cloud platform hosting Firestore database, Cloud Functions, and other services",
+          "direction": "bidirectional"
+        },
+        {
+          "name": "Firestore",
+          "description": "NoSQL database used for storing data requests, templates, test cases, and debug events",
+          "direction": "bidirectional"
+        },
+        {
+          "name": "Generative AI Models (Vertex AI or similar)",
+          "description": "Used to execute prompts and generate responses for data requests and tests",
+          "direction": "outbound"
+        },
+        {
+          "name": "Firebase Authentication",
+          "description": "Handles user authentication and authorization",
+          "direction": "inbound"
+        }
+      ],
+      "userRoles": [
+        {
+          "name": "End User",
+          "description": "Users who create and manage data requests and test templates via the web UI"
+        },
+        {
+          "name": "Admin/Template Manager",
+          "description": "Users responsible for managing templates, test cases, and overseeing test executions"
+        },
+        {
+          "name": "Automated Worker",
+          "description": "Background processes that execute tests, interact with AI models, and update system state"
+        }
+      ],
+      "keyDependencies": [
+        "React",
+        "TypeScript",
+        "Firebase (Auth, Firestore, Functions)",
+        "CodeMirror",
+        "EJS templating",
+        "Slack API",
+        "Google Cloud Functions",
+        "Vertex AI or other generative AI services"
+      ]
+    },
+    "containers": {
+      "services": [
+        "Cloud Functions backend (apps/evals-functions)",
+        "Firestore database"
+      ],
+      "userInterfaces": [
+        "React web application (apps/evals) for managing data requests, templates, and test results"
+      ],
+      "dataStores": [
+        "Firestore NoSQL database"
+      ],
+      "backgroundJobs": [
+        "Worker service for executing LLM jobs and test executions (apps/worker)",
+        "Ingest service for processing Slack events and enqueueing work (apps/ingest)"
+      ],
+      "deploymentTargets": [
+        "Google Cloud Platform (Cloud Functions, Firestore)",
+        "Vercel or similar for React frontend (implied)",
+        "Local development environment"
+      ]
+    },
+    "modules": {
+      "boundaries": [
+        "apps/evals - Frontend React app with UI components, pages, hooks, and Firebase integration",
+        "apps/evals-functions - Backend Cloud Functions handling test execution, templating, and AI interactions",
+        "apps/worker - Background worker services for running LLM jobs and test executions",
+        "apps/ingest - Slack event ingestion and processing service",
+        "packages/shared-runtime - Shared runtime libraries for checks, debugging, environment, LLM, Slack, templates, and test execution",
+        "packages/shared-types - Shared TypeScript types and utilities for error handling, logging, and domain models",
+        "tests/helpers - Test mocks and utilities"
+      ],
+      "responsibilities": [
+        "apps/evals: Provide user interface for data request management, template editing, test case management, and viewing results",
+        "apps/evals-functions: Implement backend logic for executing tests, rendering templates, interacting with AI models, and managing Firestore data",
+        "apps/worker: Run asynchronous jobs for LLM prompt execution and test batch processing",
+        "apps/ingest: Handle Slack event verification, message processing, and enqueue work for downstream processing",
+        "packages/shared-runtime: Provide reusable runtime logic for checks, debugging, environment management, LLM interaction, Slack API integration, and template rendering",
+        "packages/shared-types: Define domain types, error handling, logging, and shared data structures across services",
+        "tests/helpers: Support testing with mocks and reset utilities"
+      ],
+      "domainFocus": "The system focuses on managing data requests and automated test execution workflows leveraging generative AI models, with integration into Slack for collaboration and notification."
+    }
+  },
+  "concepts": [
+    {
+      "metadata": {
+        "name": "DataRequest",
+        "type": "Entity",
+        "boundedContext": "Data Request Management",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents a user-submitted request for data that can be managed, executed, and reviewed within the system.",
+        "ubiquitousLanguage": "DataRequest refers specifically to a request initiated by an end user (often via Slack) for data retrieval or clarification, distinct from meta-questions or direct answers about data definitions."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier for the DataRequest, typically the Firestore document ID."
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "description": "Current processing state of the request, e.g., 'processing', 'accepted', 'rejected', 'unhandled'."
+          },
+          {
+            "name": "channel",
+            "type": "string",
+            "description": "Slack channel identifier where the request originated."
+          },
+          {
+            "name": "createdAt",
+            "type": "string",
+            "description": "Timestamp when the request was created."
+          },
+          {
+            "name": "updatedAt",
+            "type": "string",
+            "description": "Timestamp of the last update to the request."
+          },
+          {
+            "name": "requester",
+            "type": "string",
+            "description": "User ID or handle of the person who submitted the request."
+          },
+          {
+            "name": "requesterName",
+            "type": "string",
+            "description": "Display name of the requester."
+          },
+          {
+            "name": "requesterHandle",
+            "type": "string",
+            "description": "Slack handle of the requester."
+          },
+          {
+            "name": "rootMessage",
+            "type": "string",
+            "description": "The initial message text that started the data request thread."
+          },
+          {
+            "name": "lastEventTs",
+            "type": "string",
+            "description": "Timestamp of the last event related to this request."
+          },
+          {
+            "name": "rejectionReason",
+            "type": "string",
+            "description": "Reason provided if the request was rejected."
+          },
+          {
+            "name": "confidence",
+            "type": "number",
+            "description": "Confidence score from AI classification that this is a valid data request."
+          },
+          {
+            "name": "artifacts",
+            "type": "object",
+            "description": "Generated artifacts from AI processing including 'request', 'clarifyingQuestions', and 'stepByStepInstructions'."
+          },
+          {
+            "name": "reacted",
+            "type": "boolean",
+            "description": "Indicates if the request thread has received a reaction."
+          },
+          {
+            "name": "greeted",
+            "type": "boolean",
+            "description": "Indicates if the request thread has been greeted or acknowledged."
+          },
+          {
+            "name": "channelName",
+            "type": "string",
+            "description": "Human-readable name of the Slack channel."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a Slack channel where the request was initiated."
+          },
+          {
+            "description": "Associated with a requester user who submitted the request."
+          },
+          {
+            "description": "Linked to AI-generated artifacts that document and clarify the request."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "unhandled",
+          "processing",
+          "accepted",
+          "rejected"
+        ],
+        "validTransitions": [
+          "unhandled → processing",
+          "processing → accepted",
+          "processing → rejected",
+          "unhandled → rejected"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "A DataRequest must have a unique identifier."
+        },
+        {
+          "rule": "Status must be one of the defined lifecycle states."
+        },
+        {
+          "rule": "If status is 'rejected', a rejectionReason must be provided."
+        },
+        {
+          "rule": "Confidence score must be between 0 and 1 if present."
+        },
+        {
+          "rule": "Artifacts must be consistent with the current state of the request and AI processing results."
+        }
+      ],
+      "commands": [
+        {
+          "name": "SubmitDataRequest",
+          "description": "Create a new data request from user input."
+        },
+        {
+          "name": "UpdateDataRequestStatus",
+          "description": "Change the status of the data request (e.g., accept, reject, mark processing)."
+        },
+        {
+          "name": "AddClarifyingQuestions",
+          "description": "Attach clarifying questions generated by AI or users to the request."
+        },
+        {
+          "name": "AddStepByStepInstructions",
+          "description": "Attach self-service instructions for data retrieval if applicable."
+        },
+        {
+          "name": "RecordRejectionReason",
+          "description": "Provide a reason when rejecting a data request."
+        },
+        {
+          "name": "ReactToRequest",
+          "description": "Mark the request as reacted or greeted."
+        }
+      ],
+      "events": [
+        {
+          "name": "DataRequestCreated",
+          "description": "Emitted when a new data request is submitted."
+        },
+        {
+          "name": "DataRequestStatusChanged",
+          "description": "Emitted when the status of a data request changes."
+        },
+        {
+          "name": "DataRequestReviewed",
+          "description": "Emitted after AI or human review produces clarifying questions or instructions."
+        },
+        {
+          "name": "DataRequestRejected",
+          "description": "Emitted when a data request is rejected with a reason."
+        },
+        {
+          "name": "DataRequestReacted",
+          "description": "Emitted when a reaction or greeting is recorded on the request."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Firestore DataRequest Document Structure",
+          "path": "apps/evals/src/pages/DataRequestsList.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "DataRequest Detail UI and Firestore Integration",
+          "path": "apps/evals/src/pages/DataRequestDetail.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "DataRequest Detail Component",
+          "path": "apps/evals/src/components/DataRequestDetail.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "AI Worker Logic for DataRequest Classification",
+          "path": "apps/worker/src/llm/is_data_request.ts"
+        },
+        {
+          "kind": "file",
+          "label": "AI Worker Logic for DataRequest Iteration",
+          "path": "apps/worker/src/llm/iterate_data_request.ts"
+        },
+        {
+          "kind": "file",
+          "label": "AI Worker Logic for DataRequest Review",
+          "path": "apps/worker/src/llm/review_data_request.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "Template",
+        "type": "Aggregate Root",
+        "boundedContext": "Test Management / Template Management",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Defines reusable test and prompt templates with versioning and activation status for generating and executing tests against data requests.",
+        "ubiquitousLanguage": "Template refers specifically to prompt templates used for AI-driven test generation and execution. Synonyms like 'PromptTemplate' are used internally but 'Template' is the preferred domain term. It excludes ad-hoc or one-off test cases."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier for the template aggregate."
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Human-readable name of the template."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "description": "Optional detailed description of the template's purpose."
+          },
+          {
+            "name": "activeVersion",
+            "type": "number",
+            "description": "The currently active version number of the template."
+          },
+          {
+            "name": "tags",
+            "type": "string[]",
+            "description": "Optional tags for categorization and filtering."
+          },
+          {
+            "name": "model",
+            "type": "string",
+            "description": "Optional AI model identifier associated with the template version."
+          },
+          {
+            "name": "templateVersions",
+            "type": "TemplateVersion[]",
+            "description": "Collection of all versions of this template."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Template has many TemplateVersions representing historical and current versions."
+          },
+          {
+            "description": "Template is referenced by TestCases and TestBatches for execution."
+          },
+          {
+            "description": "CreatedBy and UpdatedBy user references are tracked per version."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "draft",
+          "saved",
+          "active",
+          "archived"
+        ],
+        "validTransitions": [
+          "draft → saved",
+          "saved → active",
+          "active → archived",
+          "archived → draft"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Only one version of a template can be active at a time.",
+          "notes": "Activation requires explicit action; saving a new version does not auto-activate."
+        },
+        {
+          "rule": "Template variables must be explicitly declared and all required variables must be provided at render time.",
+          "notes": "Prevents runtime errors during prompt rendering."
+        },
+        {
+          "rule": "Version numbers must increment sequentially.",
+          "notes": "Ensures clear version history and rollback capability."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateTemplate",
+          "description": "Create a new template aggregate with initial version."
+        },
+        {
+          "name": "SaveTemplateVersion",
+          "description": "Save a new version of an existing template without activating it."
+        },
+        {
+          "name": "ActivateTemplateVersion",
+          "description": "Mark a specific version as active, deactivating others."
+        },
+        {
+          "name": "ArchiveTemplate",
+          "description": "Archive a template to prevent further use."
+        },
+        {
+          "name": "DeleteTemplateVersion",
+          "description": "Remove a non-active version of a template."
+        }
+      ],
+      "events": [
+        {
+          "name": "TemplateCreated",
+          "description": "Emitted when a new template aggregate is created."
+        },
+        {
+          "name": "TemplateVersionSaved",
+          "description": "Emitted when a new version of a template is saved."
+        },
+        {
+          "name": "TemplateVersionActivated",
+          "description": "Emitted when a template version is activated."
+        },
+        {
+          "name": "TemplateArchived",
+          "description": "Emitted when a template is archived."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Backend Template Handling and Firestore Access",
+          "path": "apps/evals-functions/src/templates.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Worker Template Fetch and Cache Logic",
+          "path": "apps/worker/src/templates.ts"
+        },
+        {
+          "kind": "file",
+          "label": "React UI Template Manager Page",
+          "path": "apps/evals/src/pages/TemplateManager.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "React UI Template Editor Tab",
+          "path": "apps/evals/src/components/template/TemplateEditorTab.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "React UI Template Version Sidebar",
+          "path": "apps/evals/src/components/template/TemplateVersionSidebar.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "React UI Test Cases Tab (interacts with Templates)",
+          "path": "apps/evals/src/components/template/TestCasesTab.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "React UI Test Results Tab (displays results per Template)",
+          "path": "apps/evals/src/components/template/TestResultsTab.tsx"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestCase",
+        "type": "Entity",
+        "boundedContext": "Test Management",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents an individual test case associated with a template, used to validate data requests or responses.",
+        "ubiquitousLanguage": "TestCase refers specifically to a single test scenario with defined input variables and checks, distinct from TestRun or CheckResult concepts."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier of the test case."
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Human-readable name of the test case."
+          },
+          {
+            "name": "description",
+            "type": "string | undefined",
+            "description": "Optional detailed description of the test case."
+          },
+          {
+            "name": "inputVariables",
+            "type": "Record<string, unknown>",
+            "description": "Key-value pairs representing inputs to the test case."
+          },
+          {
+            "name": "tags",
+            "type": "string[] | undefined",
+            "description": "Optional list of tags categorizing the test case."
+          },
+          {
+            "name": "checkIds",
+            "type": "string[]",
+            "description": "List of identifiers for checks to run against this test case."
+          },
+          {
+            "name": "createdBy",
+            "type": "string",
+            "description": "Identifier of the user who created the test case."
+          },
+          {
+            "name": "createdAt",
+            "type": "string",
+            "description": "Timestamp of when the test case was created."
+          },
+          {
+            "name": "updatedAt",
+            "type": "string",
+            "description": "Timestamp of the last update to the test case."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a Template (promptTemplate) which groups multiple TestCases."
+          },
+          {
+            "description": "References multiple Checks via checkIds to validate test execution results."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "draft",
+          "active",
+          "archived"
+        ],
+        "validTransitions": [
+          "draft → active",
+          "active → archived",
+          "archived → active"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each TestCase must have a unique id within its template context.",
+          "notes": "Ensures identity and traceability."
+        },
+        {
+          "rule": "Input variables must include all required variables defined by the associated template.",
+          "notes": "Guarantees test case validity for execution."
+        },
+        {
+          "rule": "checkIds must reference existing checks associated with the template.",
+          "notes": "Prevents invalid or orphaned checks."
+        },
+        {
+          "rule": "createdAt must be earlier or equal to updatedAt.",
+          "notes": "Maintains temporal consistency."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateTestCase",
+          "description": "Create a new test case with specified inputs and checks."
+        },
+        {
+          "name": "UpdateTestCase",
+          "description": "Modify properties such as name, description, input variables, or checks."
+        },
+        {
+          "name": "DeleteTestCase",
+          "description": "Remove a test case from the system."
+        },
+        {
+          "name": "ExecuteTestCase",
+          "description": "Trigger execution of the test case against the associated template."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestCaseCreated",
+          "description": "Emitted when a new test case is created."
+        },
+        {
+          "name": "TestCaseUpdated",
+          "description": "Emitted when an existing test case is updated."
+        },
+        {
+          "name": "TestCaseDeleted",
+          "description": "Emitted when a test case is deleted."
+        },
+        {
+          "name": "TestCaseExecuted",
+          "description": "Emitted when a test case execution is triggered."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "TestCase Type Definition",
+          "path": "apps/evals/src/lib/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "TestCasesList React Component",
+          "path": "apps/evals/src/components/template/components/TestCasesList.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "useTestCases React Hook",
+          "path": "apps/evals/src/components/template/hooks/useTestCases.ts"
+        },
+        {
+          "kind": "file",
+          "label": "TestCaseForm React Component",
+          "path": "apps/evals/src/components/template/components/TestCaseForm.tsx"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestExecution",
+        "type": "Domain Service",
+        "boundedContext": "Test Management and Execution",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Handles the execution of individual tests and test batches against data requests, including managing execution results and cancellations.",
+        "ubiquitousLanguage": "TestExecution refers specifically to the domain service responsible for orchestrating test runs, managing test batches, and processing results. It excludes UI concerns and focuses on backend execution logic and coordination."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "batchId",
+            "type": "string",
+            "description": "Identifier for a batch of tests executed together."
+          },
+          {
+            "name": "testCaseId",
+            "type": "string",
+            "description": "Identifier for an individual test case to be executed."
+          },
+          {
+            "name": "templateId",
+            "type": "string",
+            "description": "Identifier for the prompt template used in test execution."
+          },
+          {
+            "name": "userId",
+            "type": "string",
+            "description": "Identifier of the user who initiated the test execution."
+          },
+          {
+            "name": "inputVariables",
+            "type": "Record<string, any>",
+            "description": "Input variables used to render the test template."
+          },
+          {
+            "name": "testExecutionResult",
+            "type": "TestExecutionResult",
+            "description": "Result object containing output text, status, model used, and execution metadata."
+          },
+          {
+            "name": "runningTests",
+            "type": "Set<string>",
+            "description": "Set of currently running test case IDs to prevent duplicate executions."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Executes tests that belong to a TestBatch."
+          },
+          {
+            "description": "Uses PromptTemplate entities to render prompts for test execution."
+          },
+          {
+            "description": "Interacts with Generative AI Models (e.g., Vertex AI) to execute prompts."
+          },
+          {
+            "description": "Coordinates with background worker services to run test execution jobs asynchronously."
+          },
+          {
+            "description": "Stores and retrieves test execution results and batch status from Firestore."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "validTransitions": [
+          "pending → running",
+          "running → completed",
+          "running → failed",
+          "pending → cancelled",
+          "running → cancelled"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "A test batch marked as 'cancelled' must not execute any further tests.",
+          "notes": "Prevents wasted compute and inconsistent results."
+        },
+        {
+          "rule": "Duplicate test executions for the same test case must be prevented while a test is running.",
+          "notes": "Ensures resource efficiency and result consistency."
+        },
+        {
+          "rule": "Test execution requires an active prompt template version to render the prompt.",
+          "notes": "Execution depends on valid template data."
+        },
+        {
+          "rule": "Input variables must be present and valid for test execution to proceed.",
+          "notes": "Prevents execution errors due to missing inputs."
+        }
+      ],
+      "commands": [
+        {
+          "name": "ExecuteTest",
+          "description": "Initiates execution of a single test case using a specified template and input variables."
+        },
+        {
+          "name": "CancelTestBatch",
+          "description": "Cancels an ongoing batch of test executions to stop further processing."
+        },
+        {
+          "name": "ClearLastResult",
+          "description": "Clears the last test batch result from the client state."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestExecutionStarted",
+          "description": "Emitted when a test execution begins."
+        },
+        {
+          "name": "TestExecutionCompleted",
+          "description": "Emitted when a test execution finishes successfully."
+        },
+        {
+          "name": "TestExecutionFailed",
+          "description": "Emitted when a test execution fails due to errors."
+        },
+        {
+          "name": "TestBatchCancelled",
+          "description": "Emitted when a test batch is cancelled."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "React Hook for Test Execution UI Integration",
+          "path": "apps/evals/src/components/template/hooks/useTestExecution.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Shared Runtime Test Execution Logic",
+          "path": "packages/shared-runtime/src/test-execution.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Background Worker Job for Test Execution",
+          "path": "apps/worker/src/jobs/test-execution.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Firebase Cloud Function for Executing Tests",
+          "path": "apps/evals-functions/src/index.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "LLMInteraction",
+        "type": "domain_service",
+        "boundedContext": "Generative AI / Test Execution",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Manages interactions with generative AI models (LLMs) for prompt execution, response handling, and debugging.",
+        "ubiquitousLanguage": "LLMInteraction refers specifically to the domain service responsible for sending prompts to large language models, receiving and processing their responses, and recording debug information related to these interactions. Synonyms like 'LLM client' or 'AI model interaction' are acceptable, but exclude generic AI or ML services that do not involve prompt-response workflows."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "LLMRequest",
+            "type": "Value Object",
+            "description": "Encapsulates the prompt, model name, temperature, and max tokens for a single LLM invocation."
+          },
+          {
+            "name": "LLMResponse",
+            "type": "Value Object",
+            "description": "Contains the generated text, raw model response, elapsed time, and model name used."
+          },
+          {
+            "name": "DebugContext",
+            "type": "Value Object",
+            "description": "Contextual information for recording debug events including Firestore DB reference, template metadata, and request identifiers."
+          },
+          {
+            "name": "ModelGetter",
+            "type": "Function",
+            "description": "A function that returns a cached or newly created generative model client instance by model name."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Uses generative AI models (e.g., Vertex AI models) to execute prompts."
+          },
+          {
+            "description": "Interacts with Firestore for recording debug events related to LLM requests and responses."
+          },
+          {
+            "description": "Is invoked by backend services and workers responsible for test execution and evaluation workflows."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "prompt_sent",
+          "response_received",
+          "debug_recorded",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "initialized → prompt_sent",
+          "prompt_sent → response_received",
+          "response_received → debug_recorded",
+          "debug_recorded → completed",
+          "prompt_sent → failed",
+          "response_received → failed",
+          "debug_recorded → failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Every LLM prompt execution must record a debug event if a DebugContext is provided.",
+          "notes": "Ensures traceability and observability of AI interactions."
+        },
+        {
+          "rule": "Model instances must be cached and reused to avoid redundant client creation.",
+          "notes": "Improves performance and resource utilization."
+        },
+        {
+          "rule": "The prompt text must be non-empty before sending to the model.",
+          "notes": "Prevents invalid or empty requests to the LLM."
+        }
+      ],
+      "commands": [
+        {
+          "name": "executePrompt",
+          "description": "Executes a prompt against a specified generative AI model, handles the response, and optionally records debug information."
+        },
+        {
+          "name": "getGenerativeModel",
+          "description": "Retrieves a cached or new generative model client instance by model name."
+        }
+      ],
+      "events": [
+        {
+          "name": "LLMRequestRecorded",
+          "description": "Emitted when an LLM request debug event is successfully recorded in Firestore."
+        },
+        {
+          "name": "LLMResponseReceived",
+          "description": "Emitted when a response is received from the generative AI model."
+        },
+        {
+          "name": "LLMInteractionFailed",
+          "description": "Emitted when an error occurs during prompt execution or debug recording."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "LLM interaction and prompt execution logic",
+          "path": "packages/shared-runtime/src/llm.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Vertex AI model client creation and caching (backend functions)",
+          "path": "apps/evals-functions/src/vertex.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Vertex AI model client creation and caching (worker service)",
+          "path": "apps/worker/src/llm/vertex.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Shared LLM request and response types and executePrompt function",
+          "path": "apps/evals-functions/src/shared.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "SlackIntegration",
+        "type": "Domain Service",
+        "boundedContext": "Collaboration and Notification",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Provides Slack API integration for event ingestion, message posting, reactions, and user/channel info retrieval to support collaboration and notifications.",
+        "ubiquitousLanguage": "SlackIntegration refers specifically to the domain service responsible for all interactions with Slack's API, including verifying incoming events, posting messages and reactions, and retrieving user and channel information. It excludes generic Slack API clients or unrelated messaging services."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "slackBotToken",
+            "type": "string",
+            "description": "Authentication token used to authorize API calls to Slack."
+          },
+          {
+            "name": "signingSecret",
+            "type": "string",
+            "description": "Secret used to verify the authenticity of incoming Slack event requests."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Interacts with Slack external system via Slack Web API."
+          },
+          {
+            "description": "Used by Ingest service for event ingestion and verification."
+          },
+          {
+            "description": "Used by Worker and Backend services to post messages, reactions, and retrieve Slack user/channel info."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "ready",
+          "error"
+        ],
+        "validTransitions": [
+          "initialized → ready",
+          "ready → error",
+          "error → ready"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "All outgoing Slack API calls must be authorized with a valid bot token.",
+          "notes": "Prevents unauthorized API usage and ensures security."
+        },
+        {
+          "rule": "Incoming Slack events must be verified using the signing secret and timestamp to prevent replay attacks.",
+          "notes": "Ensures only authentic Slack events are processed."
+        },
+        {
+          "rule": "Slack API errors must be handled gracefully, ignoring 'already_reacted' errors where applicable.",
+          "notes": "Prevents duplicate reaction errors from causing failures."
+        }
+      ],
+      "commands": [
+        {
+          "name": "verifySlackSignature",
+          "description": "Validates the HMAC signature of incoming Slack requests to ensure authenticity."
+        },
+        {
+          "name": "addRobotReaction",
+          "description": "Adds a robot_face reaction emoji to a Slack message thread."
+        },
+        {
+          "name": "postThreadGreeting",
+          "description": "Posts a greeting message in a Slack thread."
+        },
+        {
+          "name": "postThreadMessage",
+          "description": "Posts a plain text message to a Slack thread."
+        },
+        {
+          "name": "postThreadBlocks",
+          "description": "Posts a block-structured message to a Slack thread."
+        },
+        {
+          "name": "getUserInfo",
+          "description": "Retrieves Slack user information by user ID."
+        },
+        {
+          "name": "getChannelInfo",
+          "description": "Retrieves Slack channel information by channel ID."
+        }
+      ],
+      "events": [
+        {
+          "name": "SlackEventReceived",
+          "description": "Emitted when a verified Slack event is ingested."
+        },
+        {
+          "name": "SlackMessagePosted",
+          "description": "Emitted after successfully posting a message or reaction to Slack."
+        },
+        {
+          "name": "SlackVerificationFailed",
+          "description": "Emitted when Slack event signature verification fails."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Slack API placeholders for event ingestion",
+          "path": "apps/ingest/src/slack/api.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Slack signature verification utility",
+          "path": "apps/ingest/src/slack/verify.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Shared Slack API utilities for user and channel info",
+          "path": "packages/shared-runtime/src/slack.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Slack API client and message posting for worker",
+          "path": "apps/worker/src/slack/api.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestBatch",
+        "type": "Entity",
+        "boundedContext": "Test Execution and Evaluation",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents a batch of test executions grouped together for processing and tracking collective progress and results.",
+        "ubiquitousLanguage": "TestBatch refers specifically to a collection of test cases executed as a single unit, identified by a unique batch ID. Synonyms like 'batch run' or 'test batch' are acceptable; it excludes individual test executions or unrelated job batches."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier for the TestBatch."
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "description": "Current lifecycle state of the batch (e.g., running, completed, cancelled, failed)."
+          },
+          {
+            "name": "totalTestCases",
+            "type": "number",
+            "description": "Total number of test cases included in the batch."
+          },
+          {
+            "name": "completedCount",
+            "type": "number",
+            "description": "Number of test cases completed so far."
+          },
+          {
+            "name": "initiatedAt",
+            "type": "string",
+            "description": "ISO timestamp when the batch was created/started."
+          },
+          {
+            "name": "templateId",
+            "type": "string",
+            "description": "Identifier of the test template associated with this batch."
+          },
+          {
+            "name": "templateVersion",
+            "type": "number",
+            "description": "Version number of the test template used."
+          },
+          {
+            "name": "userId",
+            "type": "string",
+            "description": "Identifier of the user who initiated the batch."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Contains many TestExecutions or TestCases that are executed as part of this batch."
+          },
+          {
+            "description": "Associated with a PromptTemplate (via templateId and templateVersion) that defines the test logic."
+          },
+          {
+            "description": "Initiated by a User (userId) who requested the test execution."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "running",
+          "completed",
+          "cancelled",
+          "failed"
+        ],
+        "validTransitions": [
+          "running → completed",
+          "running → cancelled",
+          "running → failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "completedCount must never exceed totalTestCases",
+          "notes": "Ensures progress tracking is accurate."
+        },
+        {
+          "rule": "status must be one of the defined lifecycle states",
+          "notes": "Prevents invalid or unknown states."
+        },
+        {
+          "rule": "A TestBatch must have a valid templateId and templateVersion",
+          "notes": "Ensures traceability to the test logic used."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateTestBatch",
+          "description": "Initialize a new TestBatch for a set of test cases and template."
+        },
+        {
+          "name": "UpdateTestBatchStatus",
+          "description": "Change the status of the batch (e.g., mark as completed or cancelled)."
+        },
+        {
+          "name": "IncrementCompletedCount",
+          "description": "Update the count of completed test cases within the batch."
+        },
+        {
+          "name": "CancelTestBatch",
+          "description": "Request cancellation of a running batch."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestBatchCreated",
+          "description": "Emitted when a new TestBatch is created."
+        },
+        {
+          "name": "TestBatchStatusChanged",
+          "description": "Emitted when the status of a TestBatch changes."
+        },
+        {
+          "name": "TestBatchProgressUpdated",
+          "description": "Emitted when the completedCount is incremented."
+        },
+        {
+          "name": "TestBatchCancelled",
+          "description": "Emitted when a TestBatch is cancelled."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Frontend Batch Progress Indicator Component",
+          "path": "apps/evals/src/components/template/components/BatchProgressIndicator.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "Frontend Batch Detail Modal Component",
+          "path": "apps/evals/src/components/template/components/BatchDetailModal.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "Backend Cloud Function for Test Execution and Batch Creation",
+          "path": "apps/evals-functions/src/index.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Shared TypeScript Types including TestBatch",
+          "path": "packages/shared-types/src/types.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "Check",
+        "type": "Value Object",
+        "boundedContext": "Test Execution and Validation",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "A validation or assertion rule applied within test cases to verify correctness of data or responses.",
+        "ubiquitousLanguage": "Also referred to as 'validation rule' or 'assertion'. It specifically excludes test cases themselves or test runs, focusing solely on the criteria used to evaluate correctness."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier for the Check."
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Human-readable name of the Check."
+          },
+          {
+            "name": "criteria",
+            "type": "string",
+            "description": "The validation criteria or assertion logic expressed in natural language or templated form."
+          },
+          {
+            "name": "model",
+            "type": "'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-3-pro-preview'",
+            "description": "The generative AI model used to evaluate this Check."
+          },
+          {
+            "name": "createdAt",
+            "type": "string (ISO timestamp)",
+            "description": "Timestamp when the Check was created."
+          },
+          {
+            "name": "createdBy",
+            "type": "string",
+            "description": "Identifier of the user who created the Check."
+          },
+          {
+            "name": "updatedAt",
+            "type": "string (ISO timestamp)",
+            "description": "Timestamp when the Check was last updated."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "A Check is associated with one or more Test Cases that use it to validate outputs."
+          },
+          {
+            "description": "Checks are stored in the Firestore 'checks' collection."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "active",
+          "archived"
+        ],
+        "validTransitions": [
+          "active → archived",
+          "archived → active"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Check must have a non-empty name.",
+          "notes": "Ensures meaningful identification in UI and logs."
+        },
+        {
+          "rule": "Check must have non-empty criteria.",
+          "notes": "Criteria defines the validation logic and cannot be blank."
+        },
+        {
+          "rule": "Model must be one of the supported generative AI models.",
+          "notes": "Restricts evaluation to supported AI models for consistency."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateCheck",
+          "description": "Create a new Check with specified name, criteria, and model."
+        },
+        {
+          "name": "UpdateCheck",
+          "description": "Modify existing Check properties such as name, criteria, or model."
+        },
+        {
+          "name": "DeleteCheck",
+          "description": "Remove a Check from the system."
+        }
+      ],
+      "events": [
+        {
+          "name": "CheckCreated",
+          "description": "Emitted when a new Check is created."
+        },
+        {
+          "name": "CheckUpdated",
+          "description": "Emitted when an existing Check is updated."
+        },
+        {
+          "name": "CheckDeleted",
+          "description": "Emitted when a Check is deleted."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Check React UI Component",
+          "path": "apps/evals/src/components/template/components/CheckItem.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "Check Form Component for Create/Edit",
+          "path": "apps/evals/src/components/template/components/CheckForm.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "Check Hooks for CRUD operations",
+          "path": "apps/evals/src/components/template/hooks/useChecks.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Check Execution Logic",
+          "path": "packages/shared-runtime/src/checks.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Check Type Definition",
+          "path": "packages/shared-types/src/types.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "DebugEvent",
+        "type": "Value Object",
+        "boundedContext": "Debugging and Tracing",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "A recorded event or log entry capturing detailed information for debugging and tracing execution flows, especially during LLM interactions and test executions.",
+        "ubiquitousLanguage": "DebugEvent refers specifically to structured debug or trace logs emitted by the system to record significant runtime occurrences such as LLM requests, responses, errors, Slack message events, and timing metrics. It excludes generic logs or unrelated telemetry."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "type",
+            "type": "string",
+            "description": "The category or kind of debug event, e.g. 'llm_request', 'error_occurred', 'time_to_react'."
+          },
+          {
+            "name": "timestamp",
+            "type": "string (ISO 8601 datetime)",
+            "description": "The exact time when the event was recorded."
+          },
+          {
+            "name": "data",
+            "type": "object",
+            "description": "Event-specific payload containing detailed contextual information relevant to the event type."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Associated with a root execution context identified by a root timestamp (rootTs) to group related debug events."
+          },
+          {
+            "description": "Emitted and stored in Firestore under a thread or execution context for traceability."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "recorded",
+          "persisted"
+        ],
+        "validTransitions": [
+          "recorded → persisted"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each DebugEvent must have a valid ISO 8601 timestamp.",
+          "notes": "Ensures temporal ordering and traceability."
+        },
+        {
+          "rule": "The 'type' field must be one of the predefined event types supported by the system.",
+          "notes": "Prevents invalid or unknown event categories."
+        },
+        {
+          "rule": "The 'data' field must contain all required properties relevant to the event type.",
+          "notes": "Guarantees completeness of debug information."
+        }
+      ],
+      "commands": [],
+      "events": [
+        {
+          "name": "DebugEventRecorded",
+          "description": "Emitted when a new debug event is successfully recorded and persisted."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Debug event utilities and recording functions",
+          "path": "packages/shared-runtime/src/debug.ts"
+        },
+        {
+          "kind": "symbol",
+          "label": "DebugEvent TypeScript type union",
+          "path": "packages/shared-types/src/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Debug event display React component",
+          "path": "apps/evals/src/components/DebugEventsDisplay.tsx"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "User",
+        "type": "Entity",
+        "boundedContext": "Authentication & Authorization",
+        "aggregateRoot": true
+      },
+      "definition": {
+        "shortDescription": "Represents a system user with identity, roles, and authentication managed via Firebase Authentication and Slack user information.",
+        "ubiquitousLanguage": "User refers specifically to authenticated individuals interacting with the system, including End Users and Admins. Synonyms like 'Account' or 'Member' are not used. User identity is tied to Firebase Auth UID and optionally linked to Slack user info."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier for the user, typically the Firebase Authentication UID."
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "description": "User's email address, used for identification and communication."
+          },
+          {
+            "name": "displayName",
+            "type": "string",
+            "description": "User's display name, possibly from Firebase Auth or Slack."
+          },
+          {
+            "name": "roles",
+            "type": "string[]",
+            "description": "List of roles assigned to the user, e.g., 'End User', 'Admin', 'Template Manager'."
+          },
+          {
+            "name": "slackUserId",
+            "type": "string",
+            "description": "Optional Slack user ID linked to this user for Slack integration."
+          },
+          {
+            "name": "slackUserInfo",
+            "type": "SlackUser",
+            "description": "Optional cached Slack user information such as real name and username."
+          },
+          {
+            "name": "createdAt",
+            "type": "string",
+            "description": "Timestamp when the user was created in the system."
+          },
+          {
+            "name": "lastLoginAt",
+            "type": "string",
+            "description": "Timestamp of the user's last login."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "A User can create and manage Data Requests."
+          },
+          {
+            "description": "A User can create, edit, and manage Test Templates if they have Admin or Template Manager role."
+          },
+          {
+            "description": "A User is authenticated via Firebase Authentication and optionally linked to Slack user identity."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "registered",
+          "active",
+          "suspended",
+          "deleted"
+        ],
+        "validTransitions": [
+          "registered → active",
+          "active → suspended",
+          "suspended → active",
+          "active → deleted",
+          "suspended → deleted"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "User must have a unique id (Firebase UID)."
+        },
+        {
+          "rule": "User must have at least one role assigned."
+        },
+        {
+          "rule": "User email must be unique and valid."
+        },
+        {
+          "rule": "Only users with Admin or Template Manager roles can modify templates."
+        }
+      ],
+      "commands": [
+        {
+          "name": "RegisterUser",
+          "description": "Create a new user account with authentication credentials."
+        },
+        {
+          "name": "AssignRole",
+          "description": "Assign a role to a user to grant permissions."
+        },
+        {
+          "name": "UpdateUserProfile",
+          "description": "Modify user profile information such as display name or linked Slack ID."
+        },
+        {
+          "name": "DeactivateUser",
+          "description": "Suspend a user account to prevent access."
+        },
+        {
+          "name": "DeleteUser",
+          "description": "Remove a user account from the system."
+        }
+      ],
+      "events": [
+        {
+          "name": "UserRegistered",
+          "description": "Emitted when a new user account is created."
+        },
+        {
+          "name": "UserRoleAssigned",
+          "description": "Emitted when a role is assigned to a user."
+        },
+        {
+          "name": "UserProfileUpdated",
+          "description": "Emitted when user profile information changes."
+        },
+        {
+          "name": "UserDeactivated",
+          "description": "Emitted when a user account is suspended."
+        },
+        {
+          "name": "UserDeleted",
+          "description": "Emitted when a user account is deleted."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Firebase Authentication Initialization",
+          "path": "apps/evals/src/firebase.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Slack User Info Fetching Utilities",
+          "path": "packages/shared-runtime/src/slack.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Shared TypeScript Types for SlackUser and User-related types",
+          "path": "packages/shared-types/src/types.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestResult",
+        "type": "Entity",
+        "boundedContext": "Test Execution and Evaluation",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents the outcome of a test execution, including pass, fail, or error states, and associated details.",
+        "ubiquitousLanguage": "TestResult refers specifically to the recorded result of running a test case against a template, capturing status, execution metadata, and optionally detailed check results."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier of the test result."
+          },
+          {
+            "name": "testCaseId",
+            "type": "string",
+            "description": "Identifier of the test case executed."
+          },
+          {
+            "name": "templateId",
+            "type": "string",
+            "description": "Identifier of the template against which the test was run."
+          },
+          {
+            "name": "templateVersion",
+            "type": "number | undefined",
+            "description": "Version of the template used; may be undefined if template fetch failed."
+          },
+          {
+            "name": "executedBy",
+            "type": "string",
+            "description": "User or system identity that executed the test."
+          },
+          {
+            "name": "executedAt",
+            "type": "string",
+            "description": "Timestamp when the test execution completed."
+          },
+          {
+            "name": "status",
+            "type": "'pass' | 'fail' | 'error'",
+            "description": "Outcome status of the test execution."
+          },
+          {
+            "name": "requestId",
+            "type": "string | undefined",
+            "description": "Identifier of the data request associated with the test run; always present on pass and fail."
+          },
+          {
+            "name": "threadId",
+            "type": "string | undefined",
+            "description": "Slack thread identifier related to the test run; always present on pass and fail."
+          },
+          {
+            "name": "elapsedMs",
+            "type": "number | undefined",
+            "description": "Elapsed time in milliseconds for the test execution; always present on pass and fail."
+          },
+          {
+            "name": "checkResults",
+            "type": "CheckResult[] | undefined",
+            "description": "Optional array of check results executed as part of the test run; always present if status is fail."
+          },
+          {
+            "name": "errorMessage",
+            "type": "string | undefined",
+            "description": "Error message describing failure if status is error."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a TestCase identified by testCaseId."
+          },
+          {
+            "description": "Associated with a Template identified by templateId and optionally templateVersion."
+          },
+          {
+            "description": "May have multiple CheckResults representing individual check outcomes."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pass",
+          "fail",
+          "error"
+        ],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "status must be one of 'pass', 'fail', or 'error'."
+        },
+        {
+          "rule": "requestId and threadId must be present if status is 'pass' or 'fail'.",
+          "notes": "These fields may be undefined if status is 'error'."
+        },
+        {
+          "rule": "checkResults must be present if status is 'fail'."
+        },
+        {
+          "rule": "elapsedMs must be present if status is 'pass' or 'fail'."
+        }
+      ],
+      "commands": [
+        {
+          "name": "RecordTestResult",
+          "description": "Create or update a TestResult after test execution completes."
+        },
+        {
+          "name": "FetchTestResult",
+          "description": "Retrieve a TestResult by its identifier."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestResultRecorded",
+          "description": "Emitted when a test execution result is saved."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Test result types definition",
+          "path": "apps/evals/src/lib/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Test results UI component",
+          "path": "apps/evals/src/components/template/TestResultsTab.tsx"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "BatchProgress",
+        "type": "Value Object",
+        "boundedContext": "Test Execution",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Tracks the progress and status of a batch of test executions, including indicators for completion and errors.",
+        "ubiquitousLanguage": "Also referred to as 'TestBatchProgress' or 'BatchStatus'; excludes individual test case details, focusing on aggregate batch-level progress."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier of the test batch."
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "description": "Current lifecycle status of the batch (e.g., running, completed, cancelled, failed)."
+          },
+          {
+            "name": "totalTestCases",
+            "type": "number",
+            "description": "Total number of test cases included in the batch."
+          },
+          {
+            "name": "completedCount",
+            "type": "number",
+            "description": "Number of test cases completed so far."
+          },
+          {
+            "name": "hasErrors",
+            "type": "boolean",
+            "description": "Indicates if any test case in the batch has failed or encountered errors."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Represents a collection of test executions grouped as a batch."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "running",
+          "completed",
+          "cancelled",
+          "failed"
+        ],
+        "validTransitions": [
+          "running → completed",
+          "running → cancelled",
+          "running → failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "completedCount cannot exceed totalTestCases",
+          "notes": "Ensures progress count integrity."
+        },
+        {
+          "rule": "status must be one of the defined lifecycle states",
+          "notes": "Prevents invalid status values."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CancelBatch",
+          "description": "Request cancellation of a running batch."
+        }
+      ],
+      "events": [
+        {
+          "name": "BatchStarted",
+          "description": "Emitted when a batch begins execution."
+        },
+        {
+          "name": "BatchCompleted",
+          "description": "Emitted when all test cases in the batch have finished successfully."
+        },
+        {
+          "name": "BatchCancelled",
+          "description": "Emitted when a batch is cancelled before completion."
+        },
+        {
+          "name": "BatchFailed",
+          "description": "Emitted when one or more test cases fail causing the batch to fail."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "BatchProgressIndicator React Component",
+          "path": "apps/evals/src/components/template/components/BatchProgressIndicator.tsx"
+        },
+        {
+          "kind": "type",
+          "label": "TestBatch Type Definition",
+          "path": "packages/shared-types/src/TestBatch.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TemplateVersion",
+        "type": "Entity",
+        "boundedContext": "Templates",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents a specific version of a test or prompt template, supporting versioning and activation lifecycle.",
+        "ubiquitousLanguage": "TemplateVersion refers specifically to a numbered iteration of a PromptTemplate, capturing its content, variables, metadata, and activation status. Synonyms like 'template revision' or 'template iteration' may be used interchangeably, but 'TemplateVersion' excludes the overall template container or template metadata outside version scope."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "version",
+            "type": "number",
+            "description": "The version number of this template iteration."
+          },
+          {
+            "name": "template",
+            "type": "string",
+            "description": "The actual prompt or test template content."
+          },
+          {
+            "name": "variables",
+            "type": "string[]",
+            "description": "List of variable names used within the template."
+          },
+          {
+            "name": "isActive",
+            "type": "boolean",
+            "description": "Indicates if this version is currently active."
+          },
+          {
+            "name": "createdAt",
+            "type": "string (ISO date)",
+            "description": "Timestamp when this version was created."
+          },
+          {
+            "name": "createdBy",
+            "type": "string",
+            "description": "Identifier of the user who created this version."
+          },
+          {
+            "name": "parentVersion",
+            "type": "number | null",
+            "description": "The version number this version was derived from, if any."
+          },
+          {
+            "name": "changeNotes",
+            "type": "string | null",
+            "description": "Optional notes describing changes made in this version."
+          },
+          {
+            "name": "model",
+            "type": "string | null",
+            "description": "The AI model associated with this template version."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a PromptTemplate entity which manages multiple TemplateVersions."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "draft",
+          "active",
+          "archived"
+        ],
+        "validTransitions": [
+          "draft → active",
+          "active → archived",
+          "archived → active"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Only one TemplateVersion per PromptTemplate can be active at a time.",
+          "notes": "Enforced to ensure a single source of truth for template execution."
+        },
+        {
+          "rule": "Version numbers must be strictly increasing within a PromptTemplate.",
+          "notes": "Prevents version conflicts and maintains chronological order."
+        },
+        {
+          "rule": "A TemplateVersion must have a non-empty template string.",
+          "notes": "Ensures valid prompt content for execution."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateTemplateVersion",
+          "description": "Create a new version of a template with specified content and metadata."
+        },
+        {
+          "name": "ActivateTemplateVersion",
+          "description": "Set a specific TemplateVersion as the active version for its PromptTemplate."
+        },
+        {
+          "name": "ArchiveTemplateVersion",
+          "description": "Mark a TemplateVersion as archived, making it inactive and hidden from default use."
+        },
+        {
+          "name": "UpdateChangeNotes",
+          "description": "Modify the change notes associated with a TemplateVersion."
+        }
+      ],
+      "events": [
+        {
+          "name": "TemplateVersionCreated",
+          "description": "Emitted when a new TemplateVersion is created."
+        },
+        {
+          "name": "TemplateVersionActivated",
+          "description": "Emitted when a TemplateVersion becomes the active version."
+        },
+        {
+          "name": "TemplateVersionArchived",
+          "description": "Emitted when a TemplateVersion is archived."
+        },
+        {
+          "name": "TemplateVersionUpdated",
+          "description": "Emitted when metadata or change notes of a TemplateVersion are updated."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Template fetching and caching logic",
+          "path": "apps/worker/src/templates.ts"
+        },
+        {
+          "kind": "file",
+          "label": "TemplateVersion UI component",
+          "path": "apps/evals/src/components/template/TemplateVersionSidebar.tsx"
+        },
+        {
+          "kind": "symbol",
+          "label": "PromptTemplate and TemplateVersion types",
+          "path": "packages/shared-types"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestBatchCancellation",
+        "type": "event",
+        "boundedContext": "Test Execution",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents the event or action of cancelling a batch of test executions, including cleanup and state updates.",
+        "ubiquitousLanguage": "Also referred to as 'Test Batch Cancelled' event; distinct from individual test cancellation or test batch completion events."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "batchId",
+            "type": "string",
+            "description": "Unique identifier of the test batch being cancelled."
+          },
+          {
+            "name": "cancelledBy",
+            "type": "string",
+            "description": "Identifier of the user or system actor who initiated the cancellation."
+          },
+          {
+            "name": "cancelledAt",
+            "type": "string (ISO 8601 timestamp)",
+            "description": "Timestamp when the cancellation was performed."
+          },
+          {
+            "name": "reason",
+            "type": "string",
+            "description": "Optional explanation or reason for the cancellation."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Relates to a TestBatch aggregate which groups multiple test executions."
+          },
+          {
+            "description": "Triggers state updates on associated TestExecutionTasks within the batch."
+          },
+          {
+            "description": "May notify external systems such as Slack or workers about the cancellation."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "running",
+          "cancelled",
+          "completed"
+        ],
+        "validTransitions": [
+          "pending → cancelled",
+          "running → cancelled"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "A TestBatchCancellation event can only be emitted if the batch is not already completed or cancelled.",
+          "notes": "Prevents redundant or conflicting cancellation attempts."
+        },
+        {
+          "rule": "Cancellation must trigger cleanup of any running test executions in the batch.",
+          "notes": "Ensures system resources are freed and no orphaned executions remain."
+        },
+        {
+          "rule": "State of the TestBatch and all related TestExecutionTasks must be updated atomically to 'cancelled'.",
+          "notes": "Maintains consistency across the batch and its executions."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CancelTestBatch",
+          "description": "Command to initiate cancellation of a test batch, triggering the TestBatchCancellation event."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestBatchCancellation",
+          "description": "Emitted when a test batch is cancelled, signaling downstream processes to update state and perform cleanup."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Backend Cloud Functions - Test Execution and Cancellation Logic",
+          "path": "apps/evals-functions/src/index.ts"
+        },
+        {
+          "kind": "symbol",
+          "label": "executeTest function",
+          "path": "apps/evals-functions/src/index.ts"
+        },
+        {
+          "kind": "package",
+          "label": "Shared Types - TestBatch and related domain models",
+          "path": "packages/shared-types"
+        },
+        {
+          "kind": "package",
+          "label": "Shared Runtime - Test execution and cancellation helpers",
+          "path": "packages/shared-runtime"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "SlackThread",
+        "type": "Entity",
+        "boundedContext": "Collaboration & Notifications",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents a Slack conversation thread related to a data request or test execution, used for collaboration and notifications.",
+        "ubiquitousLanguage": "SlackThread refers specifically to a Slack conversation thread identified by a root timestamp (rootTs) and channel, associated with domain activities such as data requests or test executions. It excludes unrelated Slack messages or channels."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "rootTs",
+            "type": "string",
+            "description": "The root timestamp identifying the Slack thread's main message."
+          },
+          {
+            "name": "channel",
+            "type": "string",
+            "description": "The Slack channel ID where the thread exists."
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "description": "Current status of the thread, e.g., active, closed, or archived."
+          },
+          {
+            "name": "relatedDataRequestId",
+            "type": "string",
+            "description": "Identifier of the associated data request, if applicable."
+          },
+          {
+            "name": "relatedTestExecutionId",
+            "type": "string",
+            "description": "Identifier of the associated test execution, if applicable."
+          },
+          {
+            "name": "lastUpdated",
+            "type": "string",
+            "description": "Timestamp of the last update to the thread record."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Associated with one Data Request or Test Execution entity."
+          },
+          {
+            "description": "Referenced by Slack messages and events within the Slack channel."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "active",
+          "archived",
+          "closed"
+        ],
+        "validTransitions": [
+          "active → closed",
+          "closed → archived"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each SlackThread must have a unique rootTs and channel combination.",
+          "notes": "Ensures thread identity and prevents duplication."
+        },
+        {
+          "rule": "A SlackThread must be associated with either a data request or a test execution.",
+          "notes": "Prevents orphan threads unrelated to domain activities."
+        },
+        {
+          "rule": "Status transitions must follow the defined lifecycle states.",
+          "notes": "Prevents invalid or inconsistent thread states."
+        }
+      ],
+      "commands": [
+        {
+          "name": "UpdateThreadStatus",
+          "description": "Modify the status of the SlackThread to reflect current progress or closure."
+        },
+        {
+          "name": "LinkToDataRequest",
+          "description": "Associate the SlackThread with a specific data request."
+        },
+        {
+          "name": "LinkToTestExecution",
+          "description": "Associate the SlackThread with a specific test execution."
+        }
+      ],
+      "events": [
+        {
+          "name": "SlackThreadStatusUpdated",
+          "description": "Emitted when the status of a SlackThread changes."
+        },
+        {
+          "name": "SlackThreadLinkedToDataRequest",
+          "description": "Emitted when a SlackThread is linked to a data request."
+        },
+        {
+          "name": "SlackThreadLinkedToTestExecution",
+          "description": "Emitted when a SlackThread is linked to a test execution."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Thread status update function placeholder",
+          "path": "apps/worker/src/adapters/threads.ts"
+        },
+        {
+          "kind": "type",
+          "label": "TaskPayload type including Slack thread fields",
+          "path": "packages/shared-types/src/types.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "PromptTemplate",
+        "type": "Value Object",
+        "boundedContext": "Templates",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "A reusable prompt template used for generating AI model prompts, supporting variable extraction and rendering.",
+        "ubiquitousLanguage": "PromptTemplate refers specifically to the structured template containing placeholders (variables) for dynamic content injection to generate prompts for generative AI models. Synonyms like 'template' or 'prompt pattern' are acceptable, but it excludes raw prompt strings without variable support."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique identifier of the prompt template."
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Human-readable name of the prompt template."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "description": "Optional detailed description of the template's purpose."
+          },
+          {
+            "name": "template",
+            "type": "string",
+            "description": "The EJS-based template string containing variables to be rendered."
+          },
+          {
+            "name": "variables",
+            "type": "string[]",
+            "description": "List of variable names required by the template."
+          },
+          {
+            "name": "version",
+            "type": "number",
+            "description": "Version number of the template for versioning and change tracking."
+          },
+          {
+            "name": "isActive",
+            "type": "boolean",
+            "description": "Indicates if this template version is currently active."
+          },
+          {
+            "name": "createdAt",
+            "type": "string",
+            "description": "Timestamp of when this template version was created."
+          },
+          {
+            "name": "createdBy",
+            "type": "string",
+            "description": "Identifier of the user who created this template version."
+          },
+          {
+            "name": "parentVersion",
+            "type": "number",
+            "description": "Optional version number of the parent template this version was derived from."
+          },
+          {
+            "name": "changeNotes",
+            "type": "string",
+            "description": "Optional notes describing changes made in this version."
+          },
+          {
+            "name": "tags",
+            "type": "string[]",
+            "description": "Optional tags for categorization or filtering."
+          },
+          {
+            "name": "model",
+            "type": "'gemini-2.5-flash' | 'gemini-2.5-pro' | undefined",
+            "description": "Optional specification of the AI model this template targets."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "PromptTemplate is used by Test Cases and AI interaction workflows to generate dynamic prompts."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "draft",
+          "active",
+          "deprecated"
+        ],
+        "validTransitions": [
+          "draft → active",
+          "active → deprecated"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "All variables listed in 'variables' must be present in the 'template' string as placeholders.",
+          "notes": "Ensures template completeness and prevents runtime rendering errors."
+        },
+        {
+          "rule": "A PromptTemplate version marked as 'isActive' must be unique per template id.",
+          "notes": "Prevents multiple active versions causing ambiguity."
+        },
+        {
+          "rule": "Required variables must be provided when rendering the template.",
+          "notes": "Rendering fails if any required variable is missing."
+        }
+      ],
+      "commands": [
+        {
+          "name": "RenderPrompt",
+          "description": "Generate a prompt string by rendering the template with provided variable values."
+        },
+        {
+          "name": "CreateTemplateVersion",
+          "description": "Create a new version of a prompt template with updated content or variables."
+        },
+        {
+          "name": "ActivateTemplateVersion",
+          "description": "Mark a specific template version as active for use."
+        }
+      ],
+      "events": [
+        {
+          "name": "PromptTemplateVersionCreated",
+          "description": "Emitted when a new version of a prompt template is created."
+        },
+        {
+          "name": "PromptTemplateVersionActivated",
+          "description": "Emitted when a template version is marked as active."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "PromptTemplate type and rendering logic",
+          "path": "apps/evals-functions/src/templates.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Shared PromptTemplate TypeScript type",
+          "path": "packages/shared-types/src/types.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestExecutionTaskPayload",
+        "type": "Value Object",
+        "boundedContext": "Test Execution / Task Queue",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Defines the immutable payload structure for tasks related to executing automated tests within batch workflows.",
+        "ubiquitousLanguage": "TestExecutionTaskPayload refers specifically to the data required to enqueue and process a single test execution task as part of a batch. It excludes any runtime state or results."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "batchId",
+            "type": "string",
+            "description": "Identifier for the batch grouping multiple test executions."
+          },
+          {
+            "name": "testCaseId",
+            "type": "string",
+            "description": "Identifier of the specific test case to be executed."
+          },
+          {
+            "name": "templateId",
+            "type": "string",
+            "description": "Identifier of the prompt template used for this test execution."
+          },
+          {
+            "name": "userId",
+            "type": "string",
+            "description": "Identifier of the user who initiated or owns this test execution task."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a Test Batch identified by batchId."
+          },
+          {
+            "description": "References a Test Case entity via testCaseId."
+          },
+          {
+            "description": "References a Prompt Template entity via templateId."
+          },
+          {
+            "description": "Associated with a User entity via userId."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "pending → in_progress",
+          "in_progress → completed",
+          "in_progress → failed",
+          "failed → pending (retry)"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "batchId, testCaseId, templateId, and userId must be non-empty strings",
+          "notes": "Ensures the payload is valid and references existing domain entities."
+        },
+        {
+          "rule": "A TestExecutionTaskPayload is immutable once created",
+          "notes": "Prevents accidental mutation during task processing."
+        }
+      ],
+      "commands": [
+        {
+          "name": "EnqueueTestExecutionTask",
+          "description": "Create and enqueue a new test execution task payload for processing."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestExecutionTaskCreated",
+          "description": "Emitted when a new test execution task payload is created and enqueued."
+        },
+        {
+          "name": "TestExecutionTaskCompleted",
+          "description": "Emitted when the test execution task finishes successfully."
+        },
+        {
+          "name": "TestExecutionTaskFailed",
+          "description": "Emitted when the test execution task fails."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "symbol",
+          "label": "TestExecutionTaskPayload Type",
+          "path": "packages/shared-types/src/types.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "ErrorHandler",
+        "type": "Domain Service",
+        "boundedContext": "Error Handling / System Reliability",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Provides centralized error handling, safe operation wrappers, and error logging utilities for robust system behavior.",
+        "ubiquitousLanguage": "ErrorHandler refers specifically to the centralized service responsible for processing, logging, and converting errors into structured domain errors (AppError). Synonyms like 'Error Logger' or 'Error Processor' may be used informally but ErrorHandler is the canonical term. It excludes generic error objects or ad-hoc error handling scattered in code."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "log",
+            "type": "function",
+            "description": "Logs an AppError with structured data and severity-based output."
+          },
+          {
+            "name": "fromFirebaseError",
+            "type": "function",
+            "description": "Converts raw Firebase errors into structured AppError instances with user-friendly messages."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Interacts with AppError value objects representing structured errors."
+          },
+          {
+            "description": "Utilizes ErrorSeverity enumeration to classify error criticality."
+          },
+          {
+            "description": "Used by backend services, workers, and frontend components to ensure consistent error handling."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "All errors must be logged with severity and context information.",
+          "notes": "Ensures consistent observability and debugging capability."
+        },
+        {
+          "rule": "Errors converted from external sources (e.g., Firebase) must be normalized into AppError format.",
+          "notes": "Prevents leakage of raw error details and supports user-friendly messaging."
+        },
+        {
+          "rule": "Critical and high severity errors must be logged as errors; medium as warnings; low as info.",
+          "notes": "Maintains appropriate log level discipline."
+        }
+      ],
+      "commands": [
+        {
+          "name": "log",
+          "description": "Accepts an AppError and logs it according to severity and structured format."
+        },
+        {
+          "name": "fromFirebaseError",
+          "description": "Transforms a Firebase error object into a domain AppError with meaningful messages."
+        }
+      ],
+      "events": [],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "ErrorHandler domain service implementation",
+          "path": "packages/shared-types/src/error-handler.ts"
+        },
+        {
+          "kind": "symbol",
+          "label": "ErrorHandler class",
+          "path": "packages/shared-types/src/error-handler.ts#ErrorHandler"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestBatchResult",
+        "type": "Value Object",
+        "boundedContext": "Test Execution and Evaluation",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents the aggregated results of a test batch execution, summarizing passes, failures, and errors.",
+        "ubiquitousLanguage": "TestBatchResult refers specifically to the collective outcome of executing a batch of tests, including counts of successful tests, failed tests, and any errors encountered. It excludes individual test details but provides a summary snapshot of the batch execution outcome."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "batchId",
+            "type": "string",
+            "description": "Unique identifier for the test batch execution."
+          },
+          {
+            "name": "totalTests",
+            "type": "number",
+            "description": "Total number of tests executed in the batch."
+          },
+          {
+            "name": "passedCount",
+            "type": "number",
+            "description": "Number of tests that passed successfully."
+          },
+          {
+            "name": "failedCount",
+            "type": "number",
+            "description": "Number of tests that failed."
+          },
+          {
+            "name": "errorCount",
+            "type": "number",
+            "description": "Number of tests that encountered errors preventing completion."
+          },
+          {
+            "name": "startTime",
+            "type": "string",
+            "description": "Timestamp when the batch execution started."
+          },
+          {
+            "name": "endTime",
+            "type": "string",
+            "description": "Timestamp when the batch execution ended."
+          },
+          {
+            "name": "durationMs",
+            "type": "number",
+            "description": "Total duration of the batch execution in milliseconds."
+          },
+          {
+            "name": "errorDetails",
+            "type": "AppError[]",
+            "description": "Optional list of errors encountered during batch execution."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Aggregates multiple individual test execution results into a single summary object."
+          },
+          {
+            "description": "Associated with a TestBatch identified by batchId."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "pending → running",
+          "running → completed",
+          "running → failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "passedCount + failedCount + errorCount <= totalTests",
+          "notes": "The sum of passes, failures, and errors cannot exceed the total tests executed."
+        },
+        {
+          "rule": "startTime must be before or equal to endTime",
+          "notes": "Execution start time cannot be after the end time."
+        },
+        {
+          "rule": "durationMs = endTime - startTime",
+          "notes": "Duration must accurately reflect the time between start and end."
+        },
+        {
+          "rule": "errorDetails must only contain errors relevant to this batch execution"
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateTestBatchResult",
+          "description": "Constructs a new TestBatchResult after batch execution completes."
+        },
+        {
+          "name": "UpdateTestBatchResult",
+          "description": "Updates the TestBatchResult with incremental test execution outcomes (if applicable)."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestBatchExecutionStarted",
+          "description": "Emitted when a test batch execution begins."
+        },
+        {
+          "name": "TestBatchExecutionCompleted",
+          "description": "Emitted when a test batch execution finishes with results."
+        },
+        {
+          "name": "TestBatchExecutionFailed",
+          "description": "Emitted when a test batch execution fails due to errors."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "symbol",
+          "label": "TestBatchResult Type / Interface",
+          "path": "packages/shared-types/src/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Test Execution Backend Functions",
+          "path": "apps/evals-functions/src/testBatchExecution.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Test Batch Result UI Components",
+          "path": "apps/evals/src/components/TestBatchResultSummary.tsx"
+        },
+        {
+          "kind": "file",
+          "label": "Test Batch Result Domain Logic",
+          "path": "packages/shared-runtime/src/testExecution/testBatchResult.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "SlackUser",
+        "type": "Entity",
+        "boundedContext": "Slack Integration",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents a Slack user entity with relevant user information used for integration and collaboration features.",
+        "ubiquitousLanguage": "SlackUser refers specifically to a user identity within the Slack platform as integrated into the system; it excludes other user identities such as Firebase Auth users or internal system users."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "id",
+            "type": "string",
+            "description": "Unique Slack user identifier (e.g., Slack user ID)"
+          },
+          {
+            "name": "username",
+            "type": "string",
+            "description": "Slack username or handle"
+          },
+          {
+            "name": "displayName",
+            "type": "string",
+            "description": "User's display name as shown in Slack"
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "description": "User's email address associated with Slack account"
+          },
+          {
+            "name": "avatarUrl",
+            "type": "string",
+            "description": "URL to the user's Slack profile image"
+          },
+          {
+            "name": "isBot",
+            "type": "boolean",
+            "description": "Indicates if the user is a bot account"
+          },
+          {
+            "name": "teamId",
+            "type": "string",
+            "description": "Slack workspace/team identifier the user belongs to"
+          },
+          {
+            "name": "roles",
+            "type": "string[]",
+            "description": "Roles or permissions assigned to the user within Slack or the system context"
+          }
+        ],
+        "relationships": [
+          {
+            "description": "May be linked to one or more Data Requests or Test Executions as the requester or assignee"
+          },
+          {
+            "description": "Interacts with Slack channels and messages for collaboration and notifications"
+          },
+          {
+            "description": "Can be associated with Firebase Authentication user identity for cross-system mapping"
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "active",
+          "deactivated",
+          "bot"
+        ],
+        "validTransitions": [
+          "active → deactivated",
+          "deactivated → active",
+          "active → bot"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "SlackUser.id must be unique within the Slack workspace",
+          "notes": "Ensures correct identification and message routing"
+        },
+        {
+          "rule": "Email must be a valid email format if present",
+          "notes": "Supports communication and user mapping"
+        },
+        {
+          "rule": "A SlackUser marked as bot must have isBot = true",
+          "notes": "Distinguishes human users from automated accounts"
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateSlackUser",
+          "description": "Registers a new Slack user entity upon first interaction or sync"
+        },
+        {
+          "name": "UpdateSlackUserProfile",
+          "description": "Updates user profile information such as display name or avatar"
+        },
+        {
+          "name": "DeactivateSlackUser",
+          "description": "Marks the Slack user as deactivated when they leave the workspace or lose access"
+        }
+      ],
+      "events": [
+        {
+          "name": "SlackUserCreated",
+          "description": "Emitted when a new Slack user entity is created in the system"
+        },
+        {
+          "name": "SlackUserUpdated",
+          "description": "Emitted when user profile information changes"
+        },
+        {
+          "name": "SlackUserDeactivated",
+          "description": "Emitted when a Slack user is deactivated or removed"
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "symbol",
+          "label": "SlackUser Type Definition",
+          "path": "packages/shared-types/src/slack.ts (hypothetical)"
+        },
+        {
+          "kind": "file",
+          "label": "Slack Event Ingestion Service",
+          "path": "apps/ingest"
+        },
+        {
+          "kind": "file",
+          "label": "Slack Integration Utilities",
+          "path": "packages/shared-runtime/src/slack"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestCaseFormState",
+        "type": "Value Object",
+        "boundedContext": "Test Case Management",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents the state and data of a test case form used in the UI for creating or editing test cases.",
+        "ubiquitousLanguage": "TestCaseFormState refers specifically to the in-memory representation of user input and form data for a test case within the UI. It excludes persisted test case entities and focuses on transient form state."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "description": "The name/title of the test case being created or edited."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "description": "A textual description providing details about the test case."
+          },
+          {
+            "name": "variableInputs",
+            "type": "Record<string, string>",
+            "description": "A map of required input variable names to their string values, representing individual variable inputs."
+          },
+          {
+            "name": "jsonInput",
+            "type": "string",
+            "description": "A JSON string representing additional input variables not included in the required variables list."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Used by the TestCaseForm React component in the UI to manage user input before submission."
+          },
+          {
+            "description": "Interacts with domain TestCase entities by providing data to create or update them upon form submission."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "editing",
+          "validating",
+          "submitting",
+          "submitted",
+          "cancelled"
+        ],
+        "validTransitions": [
+          "editing → validating",
+          "validating → submitting",
+          "submitting → submitted",
+          "editing → cancelled"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "All required variables must have non-empty string values before submission.",
+          "notes": "Ensures that mandatory inputs are provided to create a valid test case."
+        },
+        {
+          "rule": "JSON input must be valid JSON syntax if provided.",
+          "notes": "Prevents malformed input that would cause errors during processing."
+        },
+        {
+          "rule": "Name field must not be empty.",
+          "notes": "Test cases require a name to be identifiable."
+        }
+      ],
+      "commands": [
+        {
+          "name": "UpdateName",
+          "description": "Modify the test case name in the form state."
+        },
+        {
+          "name": "UpdateDescription",
+          "description": "Modify the test case description in the form state."
+        },
+        {
+          "name": "UpdateVariableInput",
+          "description": "Set or change the value of a required input variable."
+        },
+        {
+          "name": "UpdateJsonInput",
+          "description": "Set or change the JSON string for additional input variables."
+        },
+        {
+          "name": "SubmitForm",
+          "description": "Trigger validation and submission of the form data to create or update a test case."
+        },
+        {
+          "name": "CancelForm",
+          "description": "Abort editing and reset or discard form state."
+        }
+      ],
+      "events": [
+        {
+          "name": "FormSubmitted",
+          "description": "Emitted when the form data has been successfully submitted."
+        },
+        {
+          "name": "FormCancelled",
+          "description": "Emitted when the user cancels the form editing process."
+        },
+        {
+          "name": "FormValidationFailed",
+          "description": "Emitted when form validation detects errors preventing submission."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "TestCaseForm React component",
+          "path": "apps/evals/src/components/template/components/TestCaseForm.tsx"
+        },
+        {
+          "kind": "symbol",
+          "label": "TestCase type",
+          "path": "apps/evals/src/lib/types.ts"
+        },
+        {
+          "kind": "file",
+          "label": "useChecks hook for validation",
+          "path": "apps/evals/src/components/template/hooks/useChecks.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TemplateActivation",
+        "type": "Event",
+        "boundedContext": "Templates",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents the event or process of activating a specific version of a template, making it the current active version for test executions.",
+        "ubiquitousLanguage": "TemplateActivation refers specifically to the action or event where a particular template version is designated as active. Synonyms like 'TemplateVersionActivation' may be used internally, but 'TemplateActivation' is preferred. It excludes template creation or editing events."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "templateId",
+            "type": "string",
+            "description": "Unique identifier of the template being activated."
+          },
+          {
+            "name": "version",
+            "type": "number",
+            "description": "The version number of the template that is activated."
+          },
+          {
+            "name": "activatedAt",
+            "type": "DateTime",
+            "description": "Timestamp when the activation occurred."
+          },
+          {
+            "name": "activatedBy",
+            "type": "string",
+            "description": "Identifier of the user or system that performed the activation."
+          },
+          {
+            "name": "changeNotes",
+            "type": "string",
+            "description": "Optional notes describing the reason or context for activation."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a Template aggregate which manages multiple versions."
+          },
+          {
+            "description": "Triggers updates to the activeVersion field on the Template entity."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "pending",
+          "activated",
+          "superseded"
+        ],
+        "validTransitions": [
+          "pending → activated",
+          "activated → superseded"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Only one version of a template can be active at any given time.",
+          "notes": "Activation must update the template's activeVersion to the newly activated version."
+        },
+        {
+          "rule": "A template version must exist before it can be activated.",
+          "notes": "Activation cannot reference non-existent versions."
+        }
+      ],
+      "commands": [
+        {
+          "name": "ActivateTemplateVersion",
+          "description": "Command to activate a specific version of a template, making it the current active version."
+        }
+      ],
+      "events": [
+        {
+          "name": "TemplateActivated",
+          "description": "Emitted when a template version is successfully activated."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Template fetching and active version logic",
+          "path": "apps/worker/src/templates.ts"
+        },
+        {
+          "kind": "symbol",
+          "label": "fetchActiveTemplate",
+          "path": "apps/worker/src/templates.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "SlackEventIngestion",
+        "type": "Domain Service",
+        "boundedContext": "Slack Integration",
+        "aggregateRoot": false,
+        "criticality": "Core"
+      },
+      "definition": {
+        "shortDescription": "Handles ingestion and processing of Slack events, including verification, deduplication, and enqueueing work for further processing.",
+        "ubiquitousLanguage": "SlackEventIngestion refers specifically to the domain service responsible for receiving Slack events, ensuring their authenticity and uniqueness, and dispatching them for asynchronous processing. It excludes lower-level transport or Slack API client details."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "eventId",
+            "type": "string",
+            "description": "Unique identifier of the Slack event used for deduplication."
+          },
+          {
+            "name": "signature",
+            "type": "string",
+            "description": "HMAC signature from Slack used to verify event authenticity."
+          },
+          {
+            "name": "timestamp",
+            "type": "string",
+            "description": "Timestamp of the Slack event used to prevent replay attacks."
+          },
+          {
+            "name": "rawBody",
+            "type": "string",
+            "description": "Raw HTTP request body of the Slack event."
+          },
+          {
+            "name": "signingSecret",
+            "type": "string",
+            "description": "Secret key used to verify Slack event signatures."
+          },
+          {
+            "name": "payload",
+            "type": "TaskPayload",
+            "description": "Payload constructed for enqueueing the event to the worker queue."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Interacts with Firestore to record seen events for idempotency."
+          },
+          {
+            "description": "Uses Slack API signature verification to ensure event authenticity."
+          },
+          {
+            "description": "Enqueues verified and deduplicated events to background worker services via Google Cloud Tasks."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "received",
+          "verified",
+          "deduplicated",
+          "enqueued",
+          "processed"
+        ],
+        "validTransitions": [
+          "received → verified",
+          "verified → deduplicated",
+          "deduplicated → enqueued",
+          "enqueued → processed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each Slack event must be verified for authenticity using HMAC signature before processing.",
+          "notes": "Prevents processing of forged or replayed events."
+        },
+        {
+          "rule": "Each Slack event must be processed exactly once by enforcing deduplication via Firestore.",
+          "notes": "Ensures idempotency and prevents duplicate work."
+        },
+        {
+          "rule": "Events older than 5 minutes (timestamp skew) must be rejected to prevent replay attacks.",
+          "notes": "Limits window for valid event processing."
+        },
+        {
+          "rule": "Enqueueing to worker queue must succeed for further processing to occur.",
+          "notes": "Guarantees asynchronous handling of Slack events."
+        }
+      ],
+      "commands": [
+        {
+          "name": "IngestSlackEvent",
+          "description": "Receives a raw Slack event HTTP request, verifies signature, deduplicates, and enqueues for processing."
+        },
+        {
+          "name": "VerifySlackSignature",
+          "description": "Validates the Slack event signature and timestamp to ensure authenticity."
+        },
+        {
+          "name": "MarkEventSeenOnce",
+          "description": "Records the event ID in Firestore to prevent duplicate processing."
+        },
+        {
+          "name": "EnqueueWork",
+          "description": "Submits the verified and deduplicated event payload to the Cloud Tasks queue for background processing."
+        }
+      ],
+      "events": [
+        {
+          "name": "SlackEventVerified",
+          "description": "Emitted when a Slack event passes signature verification."
+        },
+        {
+          "name": "SlackEventDeduplicated",
+          "description": "Emitted when a Slack event is confirmed as not previously processed."
+        },
+        {
+          "name": "SlackEventEnqueued",
+          "description": "Emitted when a Slack event is successfully enqueued for asynchronous processing."
+        },
+        {
+          "name": "SlackEventRejected",
+          "description": "Emitted when a Slack event fails verification or is a duplicate."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Deduplication logic",
+          "path": "apps/ingest/src/adapters/dedupe.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Slack signature verification",
+          "path": "apps/ingest/src/slack/verify.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Enqueueing to Cloud Tasks",
+          "path": "apps/ingest/src/core/enqueue.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TestExecutionContext",
+        "type": "Value Object",
+        "boundedContext": "Test Execution and Evaluation",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents contextual information and state used during the execution of tests, including LLM context and debugging data.",
+        "ubiquitousLanguage": "TestExecutionContext refers specifically to the encapsulated data and state relevant to a single test execution instance, including any language model context and debugging information. It is not to be confused with broader test definitions or results."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "llmContext",
+            "type": "string",
+            "description": "The textual or markdown content providing context to the language model during test execution."
+          },
+          {
+            "name": "debugData",
+            "type": "object",
+            "description": "Structured data capturing debugging information relevant to the test execution lifecycle."
+          },
+          {
+            "name": "contextName",
+            "type": "string",
+            "description": "Identifier or name of the context resource used to load LLM context content."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Used by Test Execution Workers and Backend Cloud Functions to provide necessary context and state during test runs."
+          },
+          {
+            "description": "Interacts with LLM services (e.g., Vertex AI) by supplying contextual data for generative AI model invocations."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "contextLoaded",
+          "executing",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "initialized → contextLoaded",
+          "contextLoaded → executing",
+          "executing → completed",
+          "executing → failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "llmContext must be non-empty when in 'contextLoaded' or later states",
+          "notes": "Ensures that the language model has the necessary context to perform test execution."
+        },
+        {
+          "rule": "debugData must accurately reflect the current execution state",
+          "notes": "Maintains traceability and aids in troubleshooting test executions."
+        }
+      ],
+      "commands": [
+        {
+          "name": "LoadContext",
+          "description": "Loads the LLM context content by name into the TestExecutionContext."
+        },
+        {
+          "name": "UpdateDebugData",
+          "description": "Records or updates debugging information during test execution."
+        }
+      ],
+      "events": [
+        {
+          "name": "TestExecutionContextLoaded",
+          "description": "Emitted when the LLM context and related data have been successfully loaded."
+        },
+        {
+          "name": "TestExecutionContextUpdated",
+          "description": "Emitted when debugging or execution state data is updated."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "LLM Context Loader and Cache",
+          "path": "apps/worker/src/llm/context.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "TemplateVariable",
+        "type": "Value Object",
+        "boundedContext": "Templates",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents a variable extracted from a prompt or test template, used for dynamic rendering and substitution in templates.",
+        "ubiquitousLanguage": "TemplateVariable refers specifically to named placeholders within EJS-based templates that are dynamically replaced with actual values during template rendering. Synonyms like 'template placeholder' or 'template parameter' may be used informally but TemplateVariable is the precise domain term."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "description": "The identifier of the variable as extracted from the template."
+          },
+          {
+            "name": "value",
+            "type": "any",
+            "description": "The runtime value assigned to this variable for template rendering."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Belongs to a PromptTemplate or TestTemplate which defines the overall template text containing these variables."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "Variable names must be valid JavaScript identifiers and not JavaScript reserved keywords.",
+          "notes": "Ensures compatibility with EJS templating syntax and prevents runtime errors."
+        },
+        {
+          "rule": "TemplateVariables are immutable once extracted from a template.",
+          "notes": "As a Value Object, their identity is defined solely by their name and value at extraction time."
+        }
+      ],
+      "commands": [],
+      "events": [],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Template variable extraction function",
+          "path": "packages/shared-runtime/src/templates.ts (extractEJSVariables)"
+        },
+        {
+          "kind": "file",
+          "label": "UI component displaying template variables",
+          "path": "apps/evals/src/components/LlmResponseTabs.tsx (TemplateVariablesTabs)"
+        }
+      ]
+    }
+  ]
+}
