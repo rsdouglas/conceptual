@@ -1,52 +1,66 @@
 # Conceptual
 
-**Understand any codebase instantly.**  
-Conceptual analyzes a software repository and generates a complete 
-high-level model of the project:
+**Automated Dubberly-style concept modeling for codebases**
 
-- A **system overview** (services, dependencies, external systems)
-- A **domain map** of core entities, aggregates, services, and events
-- Rich **concept sheets** capturing business logic, invariants, and workflows
-- A lightweight **UI viewer** for exploring concepts visually
-- Direct links back to implementation files and symbols
+Conceptual analyzes your codebase and generates rich, Dubberly-style concept models automatically using LLM-powered analysis. It discovers domain concepts, relationships, rules, lifecycles, and creates focused diagram views—helping teams understand and communicate system architecture.
+
+## What is a Dubberly-style Concept Model?
+
+[Hugh Dubberly's concept modeling approach](http://www.dubberly.com/concept-maps) focuses on visualizing **domain concepts** (things, activities, roles, states, events) and their **relationships**, rather than technical implementation details.
+
+Conceptual brings this methodology to code analysis:
+
+- 🎯 **Domain-focused** - Identifies real-world concepts, not just classes/functions
+- 🔗 **Relationship-aware** - Maps how concepts connect and interact
+- 📊 **Multi-view** - Generates focused diagram perspectives for different audiences
+- 🔄 **Lifecycle tracking** - Captures how concepts change state over time
+- 📜 **Rules & constraints** - Documents business logic and invariants
 
 Perfect for:
-- Understanding AI-generated codebases  
-- Onboarding new developers  
-- PM & stakeholder visibility  
-- Auditing legacy systems  
-- Refactoring & architecture work  
-- Aligning domain language across teams  
+- Understanding AI-generated codebases
+- Onboarding new developers
+- PM & stakeholder alignment
+- Domain language standardization
+- Architecture communication
+- System refactoring & design  
 
 ---
 
 ## ✨ Features
 
-### 🔍 Concept Extraction
+### Three-Phase Analysis Pipeline
+
+```
+1. Discovery      → Identify high-level domain structure
+2. Enrichment     → Analyze code to fill in concept details
+3. View Generation → Design focused diagrams from enriched models
+```
+
+Each phase uses targeted LLM analysis to build progressively richer understanding.
+
+### 🔍 Concept Discovery
 Automatically identifies domain concepts from code:
-- Entities, value objects, aggregates  
-- Domain & application services  
-- Events, invariants, commands  
-- Lifecycle states and transitions  
+- Things, activities, roles, states, events
+- Business rules and constraints
+- Lifecycle state machines
+- Concept relationships and interactions
 
-### 📘 Concept Sheets
-Clear, structured “spec-like” Markdown files describing each concept:
-- Metadata  
-- Structure  
-- Relationships  
-- Invariants  
-- Commands & events  
-- Implementation links  
+### 📊 Multi-View Diagrams
+Generated focused diagram perspectives:
+- **System Overview** - High-level architecture
+- **Subsystem Views** - Focused flows (e.g., "Slack Bot", "Admin UI")
+- **Role-based Views** - Stakeholder perspectives
+- **Layer Views** - Organized by architectural layer
 
-### 🗺️ Domain Map UI
+### 🗺️ Interactive Domain Explorer
 A modern Tailwind-powered viewer:
-- Project overview  
-- Concept map  
-- Drill-down into details  
-- Source links  
+- Project overview with concept relationships
+- Drill-down into concept details and lifecycles
+- Multiple diagram perspectives
+- Direct links to source code
 
 ### ⚡ Fast and Local
-Works entirely offline.  
+Works entirely offline.
 No data or source code leaves your machine.
 
 ---
@@ -59,7 +73,7 @@ No data or source code leaves your machine.
 cd conceptual
 pnpm install
 pnpm build
-````
+```
 
 ### Analyze a codebase
 
@@ -68,12 +82,13 @@ cd conceptual
 pnpm dev analyze /path/to/repo
 ```
 
-Generates:
-
-```
-docs/domain/concept-model.json
-docs/domain/concepts/*.md
-```
+This will:
+1. Scan TypeScript/JavaScript files
+2. Discover project structure and domain concepts
+3. Enrich concepts with details, relationships, and rules
+4. Generate focused diagram views
+5. Write `docs/domain/concept-model.json`
+6. Publish to viewer (if available)
 
 ### Run the viewer
 
@@ -82,16 +97,20 @@ cd viewer
 pnpm dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173).
+Open [http://localhost:5173](http://localhost:5173) to explore your concept models interactively.
 
 ---
 
 ## 🧪 Status
 
-Conceptual is early but evolving quickly.
-Expect breaking changes as the model becomes richer and more precise.
+Conceptual is evolving rapidly as we refine the Dubberly-style concept modeling approach.
+Currently supports TypeScript/JavaScript analysis with LLM-powered discovery and enrichment.
 
-Pull requests are welcome!
+Pull requests welcome! Areas of particular interest:
+- Language support expansion (Python, Go, Java, etc.)
+- Analysis heuristics and LLM prompt improvements
+- Viewer UI enhancements
+- Integration patterns
 
 ---
 
@@ -100,8 +119,7 @@ Pull requests are welcome!
 Conceptual is licensed under the **Business Source License 1.1 (BSL)**.
 
 * Free for personal, educational, research, and internal commercial use.
-* **Not permitted**: hosting or offering Conceptual as a competitive
-  cloud service.
+* **Not permitted**: hosting or offering Conceptual as a competitive cloud service.
 * Automatically converts to Apache 2.0 after the change date.
 
 See [`LICENSE`](./LICENSE) for details.
@@ -110,22 +128,22 @@ See [`LICENSE`](./LICENSE) for details.
 
 ## ❤️ Contributing
 
-We welcome:
+We welcome contributions in:
 
-* Bug reports
-* Feature requests
-* New extraction heuristics
-* LLM prompt improvements
-* Viewer UI suggestions
+* **Core Analysis**: New extraction heuristics, LLM prompt improvements
+* **Language Support**: Python, Go, Java, Rust analysis capabilities
+* **Viewer UI**: Interactive exploration features, diagram layouts
+* **Integration**: Architecture documentation tools, CI/CD integration
+* **Documentation**: Examples, tutorials, use cases
 
-PRs encouraged!
+PRs encouraged! See the conceptual README for development setup.
 
 ---
 
 ## 🌟 Roadmap
 
-* Workflow extraction
-* Cross-concept relationship graphs
-* Code hotspots & dependency insights
-* LLM-driven concept refinement
-* Cloud version with collaboration and continuous analysis
+* **Language Expansion**: Python, Go, Java, Rust support
+* **Interactive Refinement**: Human-in-the-loop concept model improvement
+* **Advanced Views**: Timeline views, dependency graphs, code hotspots
+* **Export Formats**: Mermaid, PlantUML, Draw.io integration
+* **Cloud Features**: Collaboration, continuous analysis, team sharing
