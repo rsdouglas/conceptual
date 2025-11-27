@@ -11,6 +11,7 @@ import {
   Code,
   Database,
   GitBranch,
+  Layers,
   LayoutGrid,
   Network,
   Zap,
@@ -114,7 +115,7 @@ function App() {
         {/* Sidebar Header */}
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold">
-            <img src="/favicon.svg" alt="Conceptual" className="w-5 h-5" />
+            <Layers className="w-5 h-5" />
             <span>Concept Explorer</span>
           </div>
 
