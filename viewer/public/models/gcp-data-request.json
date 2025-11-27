@@ -1,168 +1,161 @@
 {
   "id": "gcp-data-request",
-  "name": "Slack-based Data Request and Evaluation System",
-  "summary": "A system where employees request data via Slack, an AI assistant helps review and process those requests, and admins configure and evaluate the AI behavior using templates and tests.",
-  "description": "The system connects Slack conversations to an AI-driven workflow for classifying, iterating on, and reviewing data access requests. A worker processes Slack threads using LLMs and templates, while Firebase/Firestore stores threads, templates, tests, and debug events. An admin-facing evaluation UI lets teams design prompt templates, define checks, run test batches, and inspect results to improve the AI’s performance and governance around data requests.",
+  "name": "Slack-based Data Request and LLM Evaluation System",
+  "summary": "A system where Slack conversations about data turn into structured data requests that are processed, reviewed, and evaluated using LLMs and configurable templates.",
+  "description": "The system listens to Slack threads, detects when someone is asking for data, and turns those conversations into formal data requests. It uses LLMs guided by templates and checks to iterate on, review, and fulfill those requests, while recording debug information and test results. An evaluation UI lets people manage templates, define test cases and checks, and run batches of tests against LLM responses to improve quality over time.",
   "models": [
     {
-      "id": "system-overview",
-      "title": "Slack Data Request System Overview",
-      "description": "High-level view of how Slack users, the AI worker, templates, tests, and storage work together to support and evaluate data requests raised in Slack.",
+      "id": "slack-data-request-flow",
+      "title": "Slack Data Request Flow",
+      "description": "How Slack conversations become structured data requests, are processed by LLMs, and feed back into Slack.",
       "concepts": [
         {
           "id": "slack-user",
           "label": "Slack user",
           "category": "role",
-          "description": "An employee or stakeholder who interacts in Slack channels and threads, sometimes asking for data or analysis.",
+          "description": "A person participating in Slack who may ask for data, respond to the bot, or review results.",
           "aliases": [
             "slack-user",
             "user",
-            "userId"
+            "userId",
+            "createdBy"
           ],
-          "notes": "A Slack user is an employee or stakeholder identified by a Slack user ID who participates in Slack channels and threads. In this system, the Slack user is primarily the originator or participant of Slack events (messages, threads) that may trigger data requests or evaluations. The user is referenced in event envelopes and task payloads but is not managed or stored as a rich domain entity here; instead, the system treats the user as an external actor identified by a string ID coming from Slack."
+          "notes": "A Slack user is a human participant in a Slack workspace who interacts with the Slack-based data request and LLM evaluation system. In this model, the Slack user is primarily identified by their Slack user ID string (e.g., in EventEnvelope.user, TaskPayload.user). They can send messages that become events, trigger tasks, and receive bot responses in Slack threads. Separately, a userId or createdBy field may refer to a (possibly the same) human user in the broader system context (e.g., test execution initiator, prompt template author), but the core concept here is the Slack-side identity that participates in channels and threads."
+        },
+        {
+          "id": "slack-channel",
+          "label": "Slack channel",
+          "category": "place",
+          "description": "A Slack channel or conversation where data-related threads occur and the bot participates.",
+          "aliases": [
+            "slack-channel",
+            "channel",
+            "slack conversation",
+            "slack thread parent channel"
+          ],
+          "notes": "A Slack channel is the Slack conversation identifier where data-related threads occur and where the bot participates. In this system it is always represented by Slack's channel ID string (e.g., 'C0123456'). It is used to route incoming events, to post bot responses into the correct conversation, and to associate debug/telemetry events with the correct Slack location."
         },
         {
           "id": "slack-thread",
           "label": "Slack thread",
           "category": "thing",
-          "description": "A conversation in Slack where a user may ask for data; the system treats each thread as a potential data request context.",
+          "description": "A threaded Slack conversation that may contain a data request and subsequent clarifications.",
           "aliases": [
             "slack-thread",
             "thread",
+            "threaded Slack conversation",
+            "Slack conversation thread",
+            "root thread",
             "thread_ts",
-            "rootTs",
-            "threadTs"
+            "rootTs"
           ],
-          "notes": "A Slack thread is the conversation context, identified by a root message timestamp, in which a user may ask for data. The system treats each thread (keyed by rootTs/threadTs) as the unit of context for data requests, reactions, and bot responses. All bot interactions in a given conversation are associated back to this root thread identifier."
+          "notes": "A Slack thread is a conversation anchored to a single root message in a Slack channel. In this system, a Slack thread is identified by the timestamp of its root message (rootTs / thread_ts). The thread is the unit of context for data requests and for the bot’s responses. Bot actions such as adding a robot reaction and posting greeting or follow-up messages are always tied to a specific thread via its root timestamp and channel."
+        },
+        {
+          "id": "slack-message",
+          "label": "Slack message",
+          "category": "event",
+          "description": "An individual message in a Slack thread that may express a data need or provide context.",
+          "aliases": [
+            "slack-message",
+            "Slack message",
+            "thread message",
+            "outgoing Slack message",
+            "thread greeting",
+            "thread reply",
+            "thread_ts message",
+            "text message",
+            "blocks message"
+          ],
+          "notes": "A Slack message is an individual post in a Slack channel or thread. In this system, the focus is on messages posted by the bot into an existing thread (identified by a root timestamp, rootTs). These messages can be plain-text or block-based and are used to greet users, respond in data request threads, and provide context. Each outgoing Slack message is also recorded as a debug event with metadata such as channel, thread timestamp, text, and message type."
         },
         {
           "id": "data-request",
           "label": "Data request",
           "category": "thing",
-          "description": "A user’s request for data or analysis, usually expressed in a Slack thread and interpreted, classified, and iterated on by the AI worker.",
+          "description": "A structured representation of what data a Slack user is asking for, derived from Slack threads and refined by LLMs.",
           "aliases": [
+            "data-request",
             "data request",
             "request",
-            "data_request",
-            "is_data_request",
-            "review_data_request",
-            "iterate_data_request"
+            "well documented request",
+            "clear request",
+            "artifacts.request"
           ],
-          "notes": "A Data request is a user’s ask for data or analysis, typically expressed in a Slack thread. The system first classifies whether a Slack thread/message is a data request (vs. something else). For confirmed data requests, the AI worker produces and iteratively refines structured artifacts: a clear, well-documented request for the data team, clarifying questions for the user, step-by-step self-service instructions (usually for Looker) when possible, and a direct answer when the user is asking a meta question about fields, terminology, or data structures rather than actual data values. Iteration happens in-thread as the user replies, and the artifacts are updated to reflect the latest information."
+          "notes": "A Data Request is the structured, LLM-derived representation of what a Slack user is asking the data team to provide in terms of actual data values, metrics, numbers, counts, or other specific data content. It is extracted from a Slack thread, iteratively refined by LLM prompts, and stored as part of a thread's artifacts (e.g., `artifacts.request`). It is distinct from meta questions about field meanings or data structures, which are handled as direct answers rather than data requests."
         },
         {
-          "id": "ai-worker",
-          "label": "AI worker",
-          "category": "role",
-          "description": "A background worker that uses LLMs and templates to classify Slack threads, iterate on data requests, review them, and post responses back to Slack.",
-          "aliases": [
-            "ai-worker",
-            "worker",
-            "LLM worker",
-            "background worker",
-            "LLM job",
-            "runLlmJob",
-            "long-running LLM stub"
-          ],
-          "notes": "The AI worker is a background process that reacts to Slack thread activity and uses LLMs plus predefined context/templates to classify Slack threads as data requests, iterate on those data requests, review them, and then post responses back into Slack. It also manages Slack reactions and greeting behavior per thread and records thread-level metadata in Firestore."
-        },
-        {
-          "id": "prompt-template",
-          "label": "Prompt template",
-          "category": "thing",
-          "description": "A configurable template, often with EJS variables, that shapes how the AI worker talks to the LLM about data requests and Slack context.",
-          "aliases": [
-            "prompt-template",
-            "PromptTemplate",
-            "template",
-            "EJS prompt template"
-          ],
-          "notes": "A Prompt Template is a configurable, versioned text pattern (often containing EJS variables) that defines how the AI worker talks to the LLM about data requests and Slack context. It is stored in Firestore under a promptTemplates collection with per-version subdocuments. Each Prompt Template specifies its raw template string, the variables it expects, metadata (name, description, tags, change notes, parentVersion), status (isActive), version number, creator and creation time, and optionally the target LLM model. Active templates are fetched and cached by the worker and can be used in test executions via templateId references."
-        },
-        {
-          "id": "evaluation-check",
-          "label": "Evaluation check",
-          "category": "thing",
-          "description": "A rule or script that inspects an AI response to see whether it meets certain criteria, such as safety, completeness, or policy compliance.",
-          "aliases": [
-            "evaluation-check",
-            "check",
-            "validation check",
-            "AI response check"
-          ],
-          "notes": "An evaluation check is a named, stored rule that describes criteria for judging an AI response (e.g., safety, completeness, policy compliance). Each check has human-authored criteria text and an associated model used to perform the evaluation. During a test run, the system loads the relevant checks, renders a check-validation prompt that includes the test input, the AI test output, and the check's criteria, and then asks an LLM to decide whether the response passes or fails the check. The outcome is recorded as a CheckResult with status pass/fail and reasoning."
-        },
-        {
-          "id": "test-case",
-          "label": "Test case",
-          "category": "thing",
-          "description": "A predefined scenario, including inputs and expected outcomes, used to evaluate how well a prompt template and AI behavior handle specific kinds of data requests.",
-          "aliases": [
-            "TestCase",
-            "test case",
-            "test-case"
-          ],
-          "notes": "A test case is a predefined evaluation scenario for a prompt template in the Slack-based Data Request and Evaluation System. It bundles a human-readable name and description with a set of inputVariables (mapped by variable name) and a list of checkIds specifying which evaluation checks should be applied. Test cases are created and edited via the evals UI, tagged for organization, and then executed to produce test runs and check results. The current implementation notes that this TestCase type is UI-only and not yet shared with worker/ingest apps, implying it is primarily used for manual or semi-manual evaluation workflows rather than fully automated cross-app testing."
-        },
-        {
-          "id": "test-batch",
-          "label": "Test batch",
+          "id": "data-request-iteration",
+          "label": "Data request iteration",
           "category": "activity",
-          "description": "A group of test cases executed together against a template or model configuration to assess AI performance at scale.",
+          "description": "The process of refining an initial, possibly vague, data request into a precise, actionable specification using LLM guidance.",
           "aliases": [
-            "TestBatch",
-            "batch",
-            "test batch"
+            "data-request-iteration",
+            "iteration on a data request",
+            "in-thread iteration on a data request",
+            "continue data request iteration",
+            "update data request artifacts",
+            "refine data request"
           ],
-          "notes": "A test batch groups one or more test case executions that are run together against a specific prompt template (and implicitly its model configuration) to evaluate AI performance. Every test execution task references a batchId, so all executions are organized into batches, even when there is only a single test case. Batches are persisted (e.g., as Firestore documents) and can be inspected in UI components such as BatchDetailModal, which display batch metadata and associated batch results."
+          "notes": "Data request iteration is the repeated, in-thread process of updating and refining a Slack-based data request as the conversation evolves. An LLM reviews the full Slack thread, the latest user reply, and previously generated artifacts (structured request, clarifying questions, step-by-step self-service instructions, and/or a direct answer) and then produces updated artifacts that better reflect the newest information. The iteration may remove clarifying questions once they are answered, refine the request as it becomes clearer, add or update self-service Looker instructions when feasible, or switch to providing a direct answer for meta questions about data structures or terminology. Each iteration is scoped to a single Slack thread and builds on prior artifacts rather than starting from scratch."
         },
         {
-          "id": "evaluation-result",
-          "label": "Evaluation result",
-          "category": "thing",
-          "description": "The recorded outcome of running checks and tests on AI responses, including passes, failures, and errors, used to improve templates and policies.",
+          "id": "data-request-review",
+          "label": "Data request review",
+          "category": "activity",
+          "description": "An LLM- or human-guided review of a data request to ensure it is clear, feasible, and compliant before execution.",
           "aliases": [
-            "evaluation result",
-            "test run result",
-            "TestRunPass",
-            "TestRunFail",
-            "TestRunError",
-            "testRunResultId",
-            "TestExecutionResult",
-            "check result",
-            "CheckResult",
-            "overallStatus"
+            "data request review",
+            "review",
+            "review_data_request",
+            "LLM review of data request",
+            "Slackbot AI assistant review"
           ],
-          "notes": "An evaluation result is the recorded outcome of executing a test case against a prompt template (and underlying model), including the overall status (pass/fail/error), timing, linkage to the originating test case and template, and any individual check results. It is used to understand how an AI response performed under defined checks and to inform improvements to templates and policies."
+          "notes": "A data request review is an LLM-guided (and potentially human-guided) analysis and reformulation of a user's Slack data request. The review produces a clearer, well-documented version of the request plus supporting artifacts: clarifying questions, step-by-step self-service instructions (for Looker explores), and a direct answer for meta questions about data definitions or structures. The review acts as an intermediary step between the requester and the data team to ensure the request is unambiguous, feasible, and aligned with available data before execution."
         },
         {
-          "id": "admin-evaluator",
-          "label": "Admin / evaluator",
-          "category": "role",
-          "description": "A person who configures templates, defines checks, runs test batches, and inspects results to govern and improve the AI’s handling of data requests.",
+          "id": "thread-status",
+          "label": "Thread status",
+          "category": "state",
+          "description": "The current processing state of a Slack thread (e.g., new, classified, in progress, completed, error).",
           "aliases": [
-            "admin",
-            "evaluator",
-            "authenticated user",
-            "signed-in user",
-            "authorized user"
+            "thread-status",
+            "thread status",
+            "status",
+            "processing state of a Slack thread"
           ],
-          "notes": "An admin/evaluator is a signed-in, authorized person who uses the evals web UI to configure and govern how the Slack-based data request assistant behaves. In the code, this person appears as the currently authenticated Firebase User and is allowed to manage checks, templates, test cases, and to inspect data request threads. They are distinct from Slack requesters; they work in a separate evaluation/admin interface."
+          "notes": "Thread status represents the current processing state of a Slack thread within the Slack-based Data Request and LLM Evaluation System. It is updated via the updateThreadStatus(rootTs, status) operation and is stored alongside the thread document (e.g., in Firestore under threads/<root_ts>). The description suggests typical values such as 'new', 'classified', 'in progress', 'completed', and 'error', indicating where in the processing pipeline a given Slack thread currently is."
         },
         {
-          "id": "data-store",
-          "label": "Data store",
-          "category": "place",
-          "description": "The shared storage (primarily Firestore) where threads, templates, test cases, test batches, debug events, and results are persisted.",
+          "id": "slack-bot-interaction",
+          "label": "Slack bot interaction",
+          "category": "activity",
+          "description": "The back-and-forth between the bot and Slack users, including greetings, clarifications, and delivery of results.",
           "aliases": [
-            "data store",
-            "db",
-            "Firestore",
-            "FirestoreLike",
-            "database",
-            "shared storage"
+            "slack-bot-interaction",
+            "Slack bot interaction",
+            "Slack thread interaction",
+            "outgoing Slack message",
+            "thread greeting",
+            "thread message",
+            "thread blocks",
+            "robot reaction"
           ],
-          "notes": "The data store is the shared persistence layer for the Slack-based Data Request and Evaluation System. In practice it is implemented primarily as Google Cloud Firestore, accessed both from backend workers (via @google-cloud/firestore) and from the evals UI (via Firebase Web SDK). A minimal FirestoreLike interface is used where only a subset of Firestore behavior is needed (e.g., for recording debug events). The data store holds domain objects such as threads and their debug events, and—per the higher-level description—also templates, test cases, test batches, and results."
+          "notes": "Slack bot interaction is the conversational exchange between the Slack bot and users within a Slack channel thread, anchored by a root message timestamp (rootTs). It includes the bot acknowledging a request with a robot_face reaction, posting an initial greeting in the thread, and sending subsequent messages (plain text or block-based) as part of the back-and-forth. Each outgoing bot message is recorded as a debug event associated with the root thread."
+        },
+        {
+          "id": "slack-security-verification",
+          "label": "Slack security verification",
+          "category": "activity",
+          "description": "The act of verifying that incoming Slack requests are authentic and untampered.",
+          "aliases": [
+            "Slack security verification",
+            "Slack signature verification",
+            "verifySlackSignature",
+            "Slack request verification",
+            "Slack HMAC verification"
+          ],
+          "notes": "Slack security verification is the process of confirming that an incoming Slack HTTP request is authentic and untampered by validating its HMAC-based signature and timestamp against a shared Slack signing secret. It specifically checks that the request carries a valid v0-style Slack signature, that the timestamp is recent (within an allowed skew window), and that the computed HMAC over the raw request body matches the provided signature using a constant-time comparison to mitigate timing attacks."
         }
       ],
       "relationships": [
@@ -170,1282 +163,1470 @@
           "id": "rel-slack-user-sends-event-envelope",
           "from": "slack-user",
           "to": "event-envelope",
-          "phrase": "sends message that is represented by",
+          "phrase": "sends messages that are represented by",
           "category": "represents",
-          "description": "A Slack user sends a message in Slack, and that incoming Slack message is represented in the system as an EventEnvelope, which may include the user's Slack ID in the `user` field."
+          "description": "When a Slack user posts a message in Slack, that incoming message is represented in the system as an EventEnvelope, which includes the user field holding the Slack user ID."
         },
         {
-          "id": "rel-slack-user-associated-with-task-payload",
+          "id": "rel-slack-user-triggers-task-payload",
           "from": "slack-user",
           "to": "task-payload",
-          "phrase": "is associated with",
-          "category": "represents",
-          "description": "A Slack user is associated with a TaskPayload via the optional `user` field, indicating which Slack user initiated or is relevant to the task derived from a Slack thread or message."
+          "phrase": "triggers creation of",
+          "category": "causes",
+          "description": "A Slack user's message or interaction can cause the system to create a TaskPayload, where the user field records which Slack user initiated the task."
         },
         {
-          "id": "rel-slack-user-initiates-test-execution-task",
+          "id": "rel-slack-user-participates-in-channel",
+          "from": "slack-user",
+          "to": "slack-channel",
+          "phrase": "participates in",
+          "category": "part_of",
+          "description": "A Slack user participates in one or more Slack channels where data requests and bot interactions occur; the channel field in EventEnvelope and TaskPayload indicates the shared context for the user and the bot."
+        },
+        {
+          "id": "rel-slack-user-initiates-test-execution",
           "from": "slack-user",
           "to": "test-execution-task-payload",
-          "phrase": "is recorded as user for",
+          "phrase": "is recorded as initiator of",
           "category": "represents",
-          "description": "A Slack user (or more generally, a system user) is recorded as the `userId` in a TestExecutionTaskPayload, indicating which user is responsible for or associated with the test execution task. In this context, the user may be the same Slack user who initiated the underlying request."
+          "description": "The userId field in TestExecutionTaskPayload records the human user who initiated or owns a test execution batch, which may correspond to a Slack user who requested or configured the test."
         },
         {
-          "id": "rel-slack-user-receives-thread-messages",
+          "id": "rel-slack-user-creates-prompt-template",
           "from": "slack-user",
-          "to": "outgoing-slack-message",
+          "to": "prompt-template",
+          "phrase": "creates",
+          "category": "causes",
+          "description": "The createdBy field on a PromptTemplate records the user who authored or created the template, representing a human user who may also interact via Slack."
+        },
+        {
+          "id": "rel-slack-user-receives-bot-messages",
+          "from": "slack-user",
+          "to": "outgoing-slack-message-debug-event",
+          "phrase": "receives messages logged as",
+          "category": "represents",
+          "description": "When the system posts a thread message back into Slack, it is typically in response to a Slack user's message; these outgoing messages are recorded as debug events of type 'outgoing_slack_message', implicitly tied to the original user's interaction via the rootTs/thread context."
+        },
+        {
+          "id": "rel-slack-channel-has-events",
+          "from": "slack-channel",
+          "to": "slack-event-envelope",
+          "phrase": "has",
+          "category": "part_of",
+          "description": "Each EventEnvelope is associated with exactly one Slack channel where the event occurred."
+        },
+        {
+          "id": "rel-slack-event-occurs-in-channel",
+          "from": "slack-event-envelope",
+          "to": "slack-channel",
+          "phrase": "occurs in",
+          "category": "part_of",
+          "description": "A Slack event (wrapped in an EventEnvelope) occurs in a specific Slack channel."
+        },
+        {
+          "id": "rel-slack-channel-has-tasks",
+          "from": "slack-channel",
+          "to": "task-payload",
+          "phrase": "has",
+          "category": "part_of",
+          "description": "Each TaskPayload references the Slack channel in which the related Slack thread or message resides."
+        },
+        {
+          "id": "rel-task-refers-to-channel",
+          "from": "task-payload",
+          "to": "slack-channel",
+          "phrase": "refers to",
+          "category": "uses",
+          "description": "A TaskPayload uses the Slack channel ID to know where to post responses or perform actions."
+        },
+        {
+          "id": "rel-slack-channel-has-threads",
+          "from": "slack-channel",
+          "to": "slack-thread",
+          "phrase": "has",
+          "category": "part_of",
+          "description": "A Slack channel contains one or more Slack threads, each identified by a root timestamp (rootTs)."
+        },
+        {
+          "id": "rel-slack-thread-lives-in-channel",
+          "from": "slack-thread",
+          "to": "slack-channel",
+          "phrase": "lives in",
+          "category": "part_of",
+          "description": "Each Slack thread is contained within a single Slack channel."
+        },
+        {
+          "id": "rel-slack-channel-receives-bot-messages",
+          "from": "slack-channel",
+          "to": "bot-message",
           "phrase": "receives",
           "category": "uses",
-          "description": "A Slack user receives outgoing Slack messages posted by the system into a thread (via `postThreadMessage` or `postThreadBlocks`), which are responses or follow-ups to the user's original Slack message or request."
+          "description": "The bot posts messages into a Slack channel, typically as replies in a thread."
         },
         {
-          "id": "rel-slack-thread-has-channel",
+          "id": "rel-bot-message-posted-in-channel",
+          "from": "bot-message",
+          "to": "slack-channel",
+          "phrase": "is posted in",
+          "category": "part_of",
+          "description": "Each outgoing bot message is posted in a specific Slack channel."
+        },
+        {
+          "id": "rel-slack-channel-has-debug-events",
+          "from": "slack-channel",
+          "to": "debug-event",
+          "phrase": "has",
+          "category": "part_of",
+          "description": "Debug events about outgoing Slack messages are associated with the channel where the message was posted."
+        },
+        {
+          "id": "rel-debug-event-refers-to-channel",
+          "from": "debug-event",
+          "to": "slack-channel",
+          "phrase": "refers to",
+          "category": "uses",
+          "description": "A debug event for an outgoing Slack message records the channel ID to indicate where the message was sent."
+        },
+        {
+          "id": "rel-slack-channel-enables-bot-reactions",
+          "from": "slack-channel",
+          "to": "slack-reaction",
+          "phrase": "enables",
+          "category": "enables",
+          "description": "The bot adds reactions (such as a robot_face) to messages within a Slack channel."
+        },
+        {
+          "id": "rel-slack-reaction-occurs-in-channel",
+          "from": "slack-reaction",
+          "to": "slack-channel",
+          "phrase": "occurs in",
+          "category": "part_of",
+          "description": "Each bot reaction is attached to a message that exists in a specific Slack channel."
+        },
+        {
+          "id": "rel-slack-thread-channel",
           "from": "slack-thread",
           "to": "slack-channel",
           "phrase": "occurs in",
           "category": "part_of",
-          "description": "Each Slack thread occurs within a specific Slack channel, referenced by the channel ID in events and task payloads."
+          "description": "Each Slack thread occurs within a specific Slack channel, identified by the channel ID passed alongside the thread's root timestamp."
         },
         {
-          "id": "rel-slack-thread-has-root-message",
+          "id": "rel-slack-thread-root-message",
           "from": "slack-thread",
           "to": "slack-message",
-          "phrase": "is identified by root message timestamp",
-          "category": "represents",
-          "description": "A Slack thread is identified by the timestamp of its root message (rootTs or threadTs), which is used as the thread_ts when posting replies and as the key for associating events and debug records."
+          "phrase": "is anchored by",
+          "category": "part_of",
+          "description": "A Slack thread is anchored by a single root Slack message whose timestamp (rootTs / ts) identifies the thread."
         },
         {
-          "id": "rel-slack-thread-uses-event-envelope",
+          "id": "rel-slack-thread-has-messages",
           "from": "slack-thread",
-          "to": "event-envelope",
-          "phrase": "is referenced by",
+          "to": "slack-message",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A Slack thread contains one or more Slack messages, including the root message and any replies posted with the thread_ts set to the root message timestamp."
+        },
+        {
+          "id": "rel-slack-thread-may-contain-data-request",
+          "from": "slack-thread",
+          "to": "data-request",
+          "phrase": "may contain",
+          "category": "other",
+          "description": "A Slack thread may contain a data request expressed by a user in the root message or subsequent messages in the thread."
+        },
+        {
+          "id": "rel-slack-thread-used-by-task-payload",
+          "from": "task-payload",
+          "to": "slack-thread",
+          "phrase": "references",
           "category": "uses",
-          "description": "Slack threads are referenced in incoming Slack events via the EventEnvelope, which carries channel, ts, and optional threadTs to indicate whether a message belongs to a thread."
+          "description": "A TaskPayload references a Slack thread via the rootTs field, indicating which thread the task is associated with."
         },
         {
-          "id": "rel-slack-thread-uses-task-payload",
-          "from": "slack-thread",
-          "to": "task-payload",
-          "phrase": "is processed via",
+          "id": "rel-slack-thread-used-by-event-envelope",
+          "from": "event-envelope",
+          "to": "slack-thread",
+          "phrase": "may reference",
           "category": "uses",
-          "description": "Background processing related to a Slack thread uses TaskPayload objects that include channel and rootTs to identify the thread context for data request handling."
+          "description": "An EventEnvelope may reference a Slack thread via the threadTs field when the event belongs to a thread."
         },
         {
-          "id": "rel-slack-thread-receives-robot-reaction",
-          "from": "slack-thread",
-          "to": "slack-bot-reaction",
-          "phrase": "receives",
-          "category": "causes",
-          "description": "When the system recognizes a relevant message, the root message of the Slack thread receives a robot_face reaction from the bot, marking the thread as being handled by the system."
+          "id": "rel-slack-thread-receives-bot-reaction",
+          "from": "slack-bot",
+          "to": "slack-thread",
+          "phrase": "adds robot reaction to root message of",
+          "category": "uses",
+          "description": "The Slack bot adds a robot_face reaction to the root message of a Slack thread to mark that the system has recognized and is handling the thread."
         },
         {
           "id": "rel-slack-thread-receives-bot-greeting",
-          "from": "slack-thread",
-          "to": "slack-bot-message",
-          "phrase": "receives greeting message in",
-          "category": "causes",
-          "description": "The system can post an initial greeting or explanatory message into the Slack thread, using the rootTs as thread_ts to anchor the response in that conversation."
+          "from": "slack-bot",
+          "to": "slack-thread",
+          "phrase": "posts greeting message in",
+          "category": "uses",
+          "description": "The Slack bot posts an initial greeting message as a reply in the Slack thread, using the root message timestamp as thread_ts."
         },
         {
           "id": "rel-slack-thread-receives-bot-messages",
-          "from": "slack-thread",
-          "to": "slack-bot-message",
-          "phrase": "receives messages from",
-          "category": "causes",
-          "description": "The system posts text or block-based messages into the Slack thread as it processes data requests, always referencing the thread by its rootTs."
+          "from": "slack-bot",
+          "to": "slack-thread",
+          "phrase": "posts messages in",
+          "category": "uses",
+          "description": "The Slack bot posts text or block messages into a Slack thread, using the rootTs as thread_ts to keep all bot responses within the same conversation context."
         },
         {
           "id": "rel-slack-thread-has-debug-events",
-          "from": "slack-thread",
-          "to": "debug-event",
-          "phrase": "is associated with",
-          "category": "uses",
-          "description": "Outgoing Slack messages posted into a thread generate DebugEvent records keyed by the thread's rootTs, allowing the system to trace activity within that thread."
+          "from": "debug-event",
+          "to": "slack-thread",
+          "phrase": "is recorded for",
+          "category": "represents",
+          "description": "Debug events such as outgoing_slack_message and time_to_react are recorded with the thread's root timestamp, associating diagnostic information with a specific Slack thread."
         },
         {
-          "id": "rel-data-request-expressed-in-slack-thread",
+          "id": "rel-slack-message-in-thread",
+          "from": "slack-message",
+          "to": "slack-thread",
+          "phrase": "is posted in",
+          "category": "part_of",
+          "description": "Each Slack message handled here is posted within a Slack thread, identified by the root thread timestamp (rootTs) and associated with a specific channel."
+        },
+        {
+          "id": "rel-slack-message-in-channel",
+          "from": "slack-message",
+          "to": "slack-channel",
+          "phrase": "appears in",
+          "category": "part_of",
+          "description": "Each Slack message is associated with a Slack channel where the thread resides."
+        },
+        {
+          "id": "rel-slack-message-has-content",
+          "from": "slack-message",
+          "to": "message-content",
+          "phrase": "has",
+          "category": "part_of",
+          "description": "A Slack message has content, which may be plain text or structured blocks."
+        },
+        {
+          "id": "rel-slack-message-recorded-as-debug-event",
+          "from": "slack-message",
+          "to": "debug-event",
+          "phrase": "is recorded as",
+          "category": "represents",
+          "description": "Each outgoing Slack message sent by the bot is recorded as a debug event of type 'outgoing_slack_message' with associated metadata."
+        },
+        {
+          "id": "rel-slack-message-sent-by-bot",
+          "from": "slack-message",
+          "to": "bot-user",
+          "phrase": "is sent by",
+          "category": "uses",
+          "description": "The Slack messages created via this API are sent by the bot user using the bot token."
+        },
+        {
+          "id": "rel-slack-message-uses-root-timestamp",
+          "from": "slack-message",
+          "to": "thread-root-timestamp",
+          "phrase": "is anchored by",
+          "category": "uses",
+          "description": "Each thread message references a root thread timestamp (rootTs) to associate it with the correct Slack thread."
+        },
+        {
+          "id": "rel-slack-message-may-trigger-reaction",
+          "from": "slack-message",
+          "to": "slack-reaction",
+          "phrase": "may have",
+          "category": "part_of",
+          "description": "A Slack message in a thread may receive a robot_face reaction from the bot, indicating automated processing or acknowledgment."
+        },
+        {
+          "id": "rel-data-request-from-thread",
           "from": "data-request",
           "to": "slack-thread",
-          "phrase": "is expressed in",
+          "phrase": "is derived from",
+          "category": "represents",
+          "description": "A Data Request is derived from the content of a Slack thread (`fullThread` and `specificMessage`), representing the user's underlying ask for data."
+        },
+        {
+          "id": "rel-data-request-requester",
+          "from": "data-request",
+          "to": "slack-user",
+          "phrase": "is requested by",
+          "category": "other",
+          "description": "A Data Request is initiated by a Slack user (the requester) who posts messages in a Slack channel or thread asking for data."
+        },
+        {
+          "id": "rel-data-request-artifacts",
+          "from": "data-request",
+          "to": "request-artifacts",
+          "phrase": "is represented within",
           "category": "part_of",
-          "description": "A data request is expressed within a Slack thread, using one or more Slack messages as its natural language input."
+          "description": "A Data Request is represented as the `request` field within a set of artifacts that also include clarifying questions, step-by-step instructions, and possibly a direct answer."
         },
         {
-          "id": "rel-user-makes-data-request",
-          "from": "user",
-          "to": "data-request",
-          "phrase": "makes",
-          "category": "causes",
-          "description": "A user makes a data request by posting messages in a Slack thread that ask for data or analysis."
-        },
-        {
-          "id": "rel-data-request-classified-by-llm",
-          "from": "data-request",
-          "to": "llm-classification",
-          "phrase": "is identified by",
-          "category": "uses",
-          "description": "The system uses an LLM-based classification step to determine whether a Slack thread or message constitutes a data request."
-        },
-        {
-          "id": "rel-data-request-has-review-artifacts",
-          "from": "data-request",
-          "to": "review-artifacts",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "Each data request is associated with review artifacts produced by the AI assistant: a refined request, clarifying questions, self-service step-by-step instructions, and an optional direct answer."
-        },
-        {
-          "id": "rel-data-request-reviewed-by-ai-assistant",
-          "from": "ai-assistant",
-          "to": "data-request",
-          "phrase": "reviews and structures",
-          "category": "uses",
-          "description": "The AI assistant reviews a data request to ensure it is well documented and unambiguous, producing structured artifacts for the data team and the user."
-        },
-        {
-          "id": "rel-data-request-has-clarifying-questions",
-          "from": "data-request",
+          "id": "rel-artifacts-clarifying-questions",
+          "from": "request-artifacts",
           "to": "clarifying-questions",
+          "phrase": "may include",
+          "category": "part_of",
+          "description": "The artifacts associated with a Data Request may include clarifying questions that must be answered by the user before the request is considered clear."
+        },
+        {
+          "id": "rel-artifacts-step-by-step",
+          "from": "request-artifacts",
+          "to": "self-service-instructions",
+          "phrase": "may include",
+          "category": "part_of",
+          "description": "The artifacts associated with a Data Request may include step-by-step Looker instructions that enable the requester to self-serve the answer."
+        },
+        {
+          "id": "rel-artifacts-direct-answer",
+          "from": "request-artifacts",
+          "to": "direct-answer",
+          "phrase": "may include",
+          "category": "part_of",
+          "description": "The artifacts associated with a Data Request may include a direct answer when the user’s question is about field meanings, business terminology, or data structures rather than actual data values."
+        },
+        {
+          "id": "rel-data-request-reviewed-by-llm",
+          "from": "data-request",
+          "to": "llm-review-process",
+          "phrase": "is reviewed and refined by",
+          "category": "uses",
+          "description": "A Data Request is reviewed and refined by an LLM-based review process that produces a clear, well-documented request and related artifacts."
+        },
+        {
+          "id": "rel-data-request-iteration",
+          "from": "data-request",
+          "to": "llm-iteration-process",
+          "phrase": "is iteratively updated by",
+          "category": "uses",
+          "description": "A Data Request is iteratively updated by an LLM iteration process that incorporates new Slack messages and previously produced artifacts to refine the request and related fields."
+        },
+        {
+          "id": "rel-thread-has-artifacts",
+          "from": "slack-thread",
+          "to": "request-artifacts",
+          "phrase": "stores",
+          "category": "part_of",
+          "description": "A Slack thread document stores the artifacts for a Data Request, including the structured request, clarifying questions, and step-by-step instructions."
+        },
+        {
+          "id": "rel-thread-has-status",
+          "from": "slack-thread",
+          "to": "data-request-status",
           "phrase": "has",
           "category": "part_of",
-          "description": "A data request may have associated clarifying questions that the AI assistant asks the user when the request is ambiguous or incomplete."
+          "description": "A Slack thread that contains a Data Request has a status field (processing, accepted, rejected, unhandled) representing the handling state of the Data Request."
         },
         {
-          "id": "rel-data-request-has-step-by-step-instructions",
-          "from": "data-request",
-          "to": "self-service-step-by-step-instructions",
-          "phrase": "may have",
-          "category": "part_of",
-          "description": "When self-service is feasible, a data request is accompanied by step-by-step instructions (typically for Looker) that allow the user to obtain the answer themselves."
+          "id": "rel-classification-identifies-data-request",
+          "from": "llm-classification",
+          "to": "data-request",
+          "phrase": "determines whether a thread contains",
+          "category": "causes",
+          "description": "The LLM classification step (`isDataRequest`) determines whether a Slack thread should be treated as containing a Data Request."
         },
         {
-          "id": "rel-data-request-may-have-direct-answer",
-          "from": "data-request",
-          "to": "direct-answer",
-          "phrase": "may have",
-          "category": "part_of",
-          "description": "If the user’s request is a meta question about field meanings, business terminology, or data structures, the data request may be satisfied with a direct answer instead of or in addition to data retrieval."
-        },
-        {
-          "id": "rel-data-request-iterated-by-ai",
-          "from": "data-request",
-          "to": "iteration-cycle",
-          "phrase": "is refined through",
-          "category": "precedes",
-          "description": "A data request is refined through an in-thread iteration cycle where the AI assistant updates the request, clarifying questions, self-service instructions, and direct answer based on new user replies."
-        },
-        {
-          "id": "rel-data-request-linked-to-debug-events",
-          "from": "data-request",
-          "to": "debug-event",
-          "phrase": "is associated with",
+          "id": "rel-data-request-iteration-updates-artifacts",
+          "from": "data-request-iteration",
+          "to": "data-request-artifacts",
+          "phrase": "updates",
           "category": "uses",
-          "description": "A data request is associated with debug events such as LLM classification results and thread creation events, which are recorded for evaluation and monitoring."
+          "description": "Data request iteration updates the set of artifacts associated with a data request (structured request, clarifying questions, step-by-step instructions, direct answer) to reflect the latest Slack thread context."
         },
         {
-          "id": "rel-ai-worker-uses-llm-models",
-          "from": "ai-worker",
-          "to": "llm-model",
+          "id": "rel-data-request-iteration-uses-slack-thread",
+          "from": "data-request-iteration",
+          "to": "slack-thread",
           "phrase": "uses",
           "category": "uses",
-          "description": "The AI worker uses generative LLM models (via Vertex AI) to analyze and generate content for Slack data requests."
+          "description": "Data request iteration uses the full Slack thread, including the latest user reply, as conversational context for refining the data request."
         },
         {
-          "id": "rel-ai-worker-uses-context",
-          "from": "ai-worker",
+          "id": "rel-data-request-iteration-uses-prior-artifacts",
+          "from": "data-request-iteration",
+          "to": "prior-artifacts",
+          "phrase": "builds on",
+          "category": "uses",
+          "description": "Data request iteration builds on prior artifacts (previous request text, clarifying questions, step-by-step instructions, and any direct answer) when producing updated artifacts."
+        },
+        {
+          "id": "rel-data-request-iteration-invokes-llm",
+          "from": "data-request-iteration",
+          "to": "llm-model",
+          "phrase": "invokes",
+          "category": "uses",
+          "description": "Data request iteration invokes a generative LLM model to interpret the Slack thread and prior artifacts and to generate updated artifacts."
+        },
+        {
+          "id": "rel-data-request-iteration-refines-data-request",
+          "from": "data-request-iteration",
+          "to": "data-request",
+          "phrase": "refines",
+          "category": "causes",
+          "description": "Data request iteration refines an initially vague or incomplete data request into a clearer, more actionable specification over multiple steps."
+        },
+        {
+          "id": "rel-data-request-iteration-produces-clarifying-questions",
+          "from": "data-request-iteration",
+          "to": "clarifying-questions",
+          "phrase": "produces or removes",
+          "category": "causes",
+          "description": "Data request iteration may produce clarifying questions when the request is unclear, and remove them once the Slack conversation has answered them."
+        },
+        {
+          "id": "rel-data-request-iteration-produces-step-by-step-instructions",
+          "from": "data-request-iteration",
+          "to": "self-service-step-by-step-instructions",
+          "phrase": "produces",
+          "category": "causes",
+          "description": "Data request iteration produces or updates step-by-step Looker self-service instructions when the request can be fulfilled by the requester directly."
+        },
+        {
+          "id": "rel-data-request-iteration-produces-direct-answer",
+          "from": "data-request-iteration",
+          "to": "direct-answer",
+          "phrase": "produces",
+          "category": "causes",
+          "description": "Data request iteration produces a direct answer artifact when the Slack message is a meta question about field meanings, business terminology, or data structures rather than a request for specific data values."
+        },
+        {
+          "id": "rel-data-request-iteration-uses-context-templates",
+          "from": "data-request-iteration",
           "to": "llm-context",
           "phrase": "uses",
           "category": "uses",
-          "description": "The AI worker uses named context documents (markdown files) as prompt context when running LLM-based classification, iteration, and review of data requests."
+          "description": "Data request iteration may use shared LLM context files and templates to guide how the LLM interprets and refines data requests."
         },
         {
-          "id": "rel-ai-worker-classifies-thread",
-          "from": "ai-worker",
-          "to": "slack-thread",
-          "phrase": "classifies",
-          "category": "causes",
-          "description": "The AI worker classifies a Slack thread to determine whether it is a data request."
-        },
-        {
-          "id": "rel-ai-worker-iterates-data-request",
-          "from": "ai-worker",
+          "id": "rel-data-request-review-uses-data-request",
+          "from": "data-request-review",
           "to": "data-request",
-          "phrase": "iterates on",
-          "category": "causes",
-          "description": "When a Slack thread is recognized as a data request, the AI worker iterates on the request content using LLMs to refine or elaborate it."
-        },
-        {
-          "id": "rel-ai-worker-reviews-data-request",
-          "from": "ai-worker",
-          "to": "data-request",
-          "phrase": "reviews",
-          "category": "causes",
-          "description": "The AI worker reviews a data request using LLMs, likely checking quality, completeness, or adherence to guidelines before responding."
-        },
-        {
-          "id": "rel-ai-worker-posts-to-slack",
-          "from": "ai-worker",
-          "to": "slack-thread",
-          "phrase": "posts responses to",
-          "category": "causes",
-          "description": "The AI worker posts generated responses and block messages back into the originating Slack thread."
-        },
-        {
-          "id": "rel-ai-worker-adds-reactions",
-          "from": "ai-worker",
-          "to": "slack-message",
-          "phrase": "adds robot reaction to",
-          "category": "causes",
-          "description": "The AI worker adds a robot reaction to a Slack message to signal that it is processing the thread."
-        },
-        {
-          "id": "rel-ai-worker-removes-reactions",
-          "from": "ai-worker",
-          "to": "slack-message",
-          "phrase": "removes robot reaction from",
-          "category": "causes",
-          "description": "The AI worker removes the robot reaction from a Slack message when processing is complete or no longer needed."
-        },
-        {
-          "id": "rel-ai-worker-fetches-thread-messages",
-          "from": "ai-worker",
-          "to": "slack-thread",
-          "phrase": "fetches messages for",
+          "phrase": "analyzes and reformulates",
           "category": "uses",
-          "description": "The AI worker fetches all messages in a Slack thread to provide full conversational context to the LLM."
+          "description": "A data request review analyzes an incoming data request from a Slack user and reformulates it into a clearer, well-documented request."
         },
         {
-          "id": "rel-ai-worker-updates-thread-record",
-          "from": "ai-worker",
-          "to": "thread-record",
-          "phrase": "updates",
-          "category": "causes",
-          "description": "The AI worker updates a Firestore thread record (e.g., reacted, greeted, updatedAt) when it processes a Slack thread."
-        },
-        {
-          "id": "rel-ai-worker-runs-for-task-payload",
-          "from": "ai-worker",
-          "to": "task-payload",
-          "phrase": "processes",
-          "category": "uses",
-          "description": "The AI worker processes a task payload that describes which Slack channel, thread, and message to handle."
-        },
-        {
-          "id": "rel-prompt-template-has-variables",
-          "from": "prompt-template",
-          "to": "template-variable",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "A Prompt Template has a list of variables that can be substituted when rendering the template for an LLM call."
-        },
-        {
-          "id": "rel-prompt-template-uses-ejs",
-          "from": "prompt-template",
-          "to": "ejs-variable",
-          "phrase": "uses",
-          "category": "uses",
-          "description": "A Prompt Template uses EJS-style variables and tags inside its template string to parameterize the prompt content."
-        },
-        {
-          "id": "rel-prompt-template-stored-in-firestore",
-          "from": "prompt-template",
-          "to": "firestore-prompt-template-document",
-          "phrase": "is stored as",
-          "category": "represents",
-          "description": "A Prompt Template is represented as a document in the promptTemplates collection with versioned subdocuments in Firestore."
-        },
-        {
-          "id": "rel-prompt-template-has-version",
-          "from": "prompt-template",
-          "to": "prompt-template-version",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "A Prompt Template has a specific version number and may be related to a parentVersion, representing its evolution over time."
-        },
-        {
-          "id": "rel-prompt-template-has-active-version-flag",
-          "from": "prompt-template",
-          "to": "prompt-template-active-state",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "A Prompt Template has an isActive flag indicating whether that version is currently active."
-        },
-        {
-          "id": "rel-prompt-template-selected-by-metadata-activeVersion",
-          "from": "prompt-template",
-          "to": "prompt-template-metadata",
-          "phrase": "is selected by",
-          "category": "uses",
-          "description": "The active version of a Prompt Template is selected using the activeVersion field in its metadata document."
-        },
-        {
-          "id": "rel-prompt-template-used-in-test-execution",
-          "from": "prompt-template",
-          "to": "test-execution-task",
-          "phrase": "is referenced by",
-          "category": "uses",
-          "description": "A Test Execution Task references a Prompt Template via templateId to run tests against a specific template version."
-        },
-        {
-          "id": "rel-prompt-template-created-by-user",
-          "from": "prompt-template",
-          "to": "user",
-          "phrase": "is created by",
-          "category": "other",
-          "description": "A Prompt Template records the identifier of the user who created that version in createdBy."
-        },
-        {
-          "id": "rel-prompt-template-targets-model",
-          "from": "prompt-template",
-          "to": "llm-model",
-          "phrase": "targets",
-          "category": "uses",
-          "description": "A Prompt Template can specify which LLM model (e.g., gemini-2.5-flash or gemini-2.5-pro) it is intended to be used with."
-        },
-        {
-          "id": "rel-evalcheck-has-criteria",
-          "from": "evaluation-check",
-          "to": "check-criteria",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "An evaluation check has human-authored criteria text that describes what the AI response must satisfy."
-        },
-        {
-          "id": "rel-evalcheck-uses-model",
-          "from": "evaluation-check",
-          "to": "llm-model",
-          "phrase": "uses",
-          "category": "uses",
-          "description": "An evaluation check specifies which LLM model should be used to perform the evaluation of an AI response."
-        },
-        {
-          "id": "rel-evalcheck-yields-checkresult",
-          "from": "evaluation-check",
-          "to": "check-result",
-          "phrase": "yields",
-          "category": "causes",
-          "description": "When executed in the context of a test run, an evaluation check yields a CheckResult capturing pass/fail status and reasoning."
-        },
-        {
-          "id": "rel-evalcheck-stored-in-checks-collection",
-          "from": "evaluation-check",
-          "to": "checks-collection",
-          "phrase": "is stored in",
-          "category": "part_of",
-          "description": "Each evaluation check is persisted as a document in the 'checks' collection in the database."
-        },
-        {
-          "id": "rel-evalcheck-executed-in-test-run",
-          "from": "evaluation-check",
-          "to": "test-run",
-          "phrase": "is executed in",
-          "category": "uses",
-          "description": "Evaluation checks are executed as part of a test run to assess a specific AI test output against defined criteria."
-        },
-        {
-          "id": "rel-evalcheck-applied-to-test-output",
-          "from": "evaluation-check",
-          "to": "test-output",
-          "phrase": "is applied to",
-          "category": "uses",
-          "description": "An evaluation check is applied to a test output (an AI response) to determine whether it passes the check's criteria."
-        },
-        {
-          "id": "rel-evalcheck-considers-test-input",
-          "from": "evaluation-check",
-          "to": "test-input",
-          "phrase": "considers",
-          "category": "uses",
-          "description": "When executed, an evaluation check considers the original test input alongside the test output to judge compliance with its criteria."
-        },
-        {
-          "id": "rel-evalcheck-uses-check-validation-template",
-          "from": "evaluation-check",
-          "to": "check-validation-prompt-template",
-          "phrase": "uses",
-          "category": "uses",
-          "description": "Execution of an evaluation check uses the active 'check_validation' prompt template to structure the evaluation request to the LLM."
-        },
-        {
-          "id": "rel-evalcheck-created-via-checkform",
-          "from": "evaluation-check",
-          "to": "check-form",
-          "phrase": "is created or edited via",
-          "category": "uses",
-          "description": "Users create or edit evaluation checks through the CheckForm UI, providing name, criteria, and model."
-        },
-        {
-          "id": "rel-test-case-has-input-variables",
-          "from": "test-case",
-          "to": "input-variables",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "A test case has inputVariables, a mapping from variable names to concrete values, used to populate a prompt template when the test case is executed."
-        },
-        {
-          "id": "rel-test-case-has-check-ids",
-          "from": "test-case",
-          "to": "check",
-          "phrase": "selects",
-          "category": "uses",
-          "description": "A test case selects one or more checks to run by storing their identifiers in checkIds; these checks are executed against the test run produced from the test case."
-        },
-        {
-          "id": "rel-test-case-tagged-by-tags",
-          "from": "test-case",
-          "to": "tag",
-          "phrase": "is tagged by",
-          "category": "other",
-          "description": "A test case is tagged by zero or more tags, which are short labels used in the UI to categorize or filter test cases."
-        },
-        {
-          "id": "rel-test-case-created-by-user",
-          "from": "test-case",
-          "to": "user",
-          "phrase": "is created by",
-          "category": "causes",
-          "description": "A test case is created by a user, recorded via createdBy along with createdAt and updatedAt timestamps."
-        },
-        {
-          "id": "rel-test-case-produces-test-run",
-          "from": "test-case",
-          "to": "test-run",
+          "id": "rel-data-request-review-uses-clarifying-questions",
+          "from": "data-request-review",
+          "to": "clarifying-questions",
           "phrase": "produces",
           "category": "causes",
-          "description": "Executing a test case produces one or more test runs (pass, fail, or error), each linked back to the originating test case via testCaseId."
+          "description": "A data request review produces clarifying questions when the original request is ambiguous or incomplete; these questions are shown to the user to refine the request."
         },
         {
-          "id": "rel-test-case-executes-template",
-          "from": "test-case",
-          "to": "prompt-template",
-          "phrase": "is executed against",
-          "category": "uses",
-          "description": "A test case is executed against a specific prompt template (identified by templateId and templateVersion in the resulting test run) to evaluate how that template behaves with the test case's inputVariables."
-        },
-        {
-          "id": "rel-test-run-has-check-results",
-          "from": "test-run",
-          "to": "check-result",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "A test run has zero or more check results, each representing the outcome of running a specific check (referenced by checkId) in the context of that test run."
-        },
-        {
-          "id": "rel-check-result-refers-to-test-case-indirectly",
-          "from": "check-result",
-          "to": "test-case",
-          "phrase": "indirectly refers to",
-          "category": "other",
-          "description": "A check result indirectly refers to a test case through its testRunId, since each test run is associated with a specific test case via testCaseId."
-        },
-        {
-          "id": "rel-test-case-included-in-test-batch",
-          "from": "test-case",
-          "to": "test-batch",
-          "phrase": "may be included in",
-          "category": "part_of",
-          "description": "A test case may be included in a test batch (TestBatch) for batch execution, where multiple test cases are run together."
-        },
-        {
-          "id": "rel-test-batch-has-test-executions",
-          "from": "test-batch",
-          "to": "test-execution-task",
-          "phrase": "groups",
-          "category": "part_of",
-          "description": "A test batch groups one or more test execution tasks. Each TestExecutionTaskPayload includes a batchId indicating the batch it belongs to, and all test executions are now part of batches."
-        },
-        {
-          "id": "rel-test-batch-targets-template",
-          "from": "test-batch",
-          "to": "prompt-template",
-          "phrase": "targets",
-          "category": "uses",
-          "description": "A test batch is executed against a specific prompt template (and its active version). The executeTest function fetches the active template for the given templateId before creating a batch and enqueuing test execution tasks."
-        },
-        {
-          "id": "rel-test-batch-has-results",
-          "from": "test-batch",
-          "to": "test-batch-result",
-          "phrase": "has",
-          "category": "part_of",
-          "description": "A test batch has one or more batch-level result records. The BatchDetailModal loads and displays TestBatchResult entries associated with a given batchId, representing the outcomes of the batch's test executions."
-        },
-        {
-          "id": "rel-test-batch-has-test-run-results",
-          "from": "test-batch",
-          "to": "test-run-result",
-          "phrase": "aggregates",
-          "category": "part_of",
-          "description": "A test batch aggregates individual test run results for its test cases. The BatchDetailModal maintains state for TestRunResult items associated with the selected batch, allowing inspection of per-test outcomes within the batch."
-        },
-        {
-          "id": "rel-test-batch-initiated-by-user",
-          "from": "test-batch",
-          "to": "user",
-          "phrase": "is initiated by",
+          "id": "rel-data-request-review-uses-step-by-step-instructions",
+          "from": "data-request-review",
+          "to": "step-by-step-instructions",
+          "phrase": "produces",
           "category": "causes",
-          "description": "A test batch is initiated by an authenticated user. The executeTest function requires request.auth and uses the authenticated userId when creating a batch and its associated test execution tasks."
+          "description": "A data request review produces step-by-step instructions describing how to use specific explores in Looker to self-serve the requested data when self-service is feasible."
         },
         {
-          "id": "rel-test-batch-associated-with-test-cases",
-          "from": "test-batch",
-          "to": "test-case",
-          "phrase": "includes executions of",
-          "category": "part_of",
-          "description": "A test batch includes executions of one or more test cases. Each TestExecutionTaskPayload references a testCaseId along with the batchId, tying specific test cases to the batch."
+          "id": "rel-data-request-review-uses-direct-answer",
+          "from": "data-request-review",
+          "to": "direct-answer",
+          "phrase": "produces",
+          "category": "causes",
+          "description": "A data request review produces a direct answer when the user is asking a meta question about field meanings, business terminology, or data structures rather than about actual data values."
         },
         {
-          "id": "rel-eval-uses-testcase",
-          "from": "evaluation-result",
-          "to": "test-case",
-          "phrase": "evaluates",
-          "category": "uses",
-          "description": "Each evaluation result is produced by running a specific test case, referenced by testCaseId."
-        },
-        {
-          "id": "rel-eval-uses-template",
-          "from": "evaluation-result",
-          "to": "prompt-template",
-          "phrase": "evaluates responses generated from",
-          "category": "uses",
-          "description": "Each evaluation result is tied to a specific prompt template and version, referenced by templateId and templateVersion."
-        },
-        {
-          "id": "rel-eval-has-check-results",
-          "from": "evaluation-result",
-          "to": "check-result",
-          "phrase": "aggregates",
-          "category": "part_of",
-          "description": "An evaluation result may contain multiple check results, each representing the outcome of an individual check applied to the AI response."
-        },
-        {
-          "id": "rel-eval-produced-by-user",
-          "from": "evaluation-result",
-          "to": "user",
-          "phrase": "is executed by",
-          "category": "uses",
-          "description": "Each evaluation result records the user who initiated the test run via executedBy."
-        },
-        {
-          "id": "rel-eval-refers-to-request",
-          "from": "evaluation-result",
-          "to": "data-request",
-          "phrase": "references",
-          "category": "represents",
-          "description": "For passing and failing runs, the evaluation result references the underlying test request via requestId and threadId, linking the evaluation back to the Slack-based data request context."
-        },
-        {
-          "id": "rel-eval-in-batch",
-          "from": "evaluation-result",
-          "to": "test-batch",
-          "phrase": "belongs to",
-          "category": "part_of",
-          "description": "Evaluation results are executed as part of a test batch, which groups multiple test executions for a template."
-        },
-        {
-          "id": "rel-check-result-belongs-to-eval",
-          "from": "check-result",
-          "to": "evaluation-result",
-          "phrase": "belongs to",
-          "category": "part_of",
-          "description": "Each check result is associated with a specific evaluation result via testRunId."
-        },
-        {
-          "id": "rel-check-result-refers-check",
-          "from": "check-result",
-          "to": "check",
-          "phrase": "is produced by running",
-          "category": "uses",
-          "description": "Each check result references the check definition that was executed via checkId."
-        },
-        {
-          "id": "rel-admin-authenticates",
-          "from": "admin-evaluator",
-          "to": "auth-session",
-          "phrase": "authenticates as",
+          "id": "rel-data-request-review-enables-data-team-execution",
+          "from": "data-request-review",
+          "to": "data-team-execution",
+          "phrase": "prepares request for",
           "category": "enables",
-          "description": "The admin/evaluator must authenticate (e.g., via Firebase/Google sign-in) to obtain a user session before accessing checks, templates, or data request lists."
+          "description": "A data request review prepares a well-documented, unambiguous request that enables the data team to execute the request efficiently when self-service is not sufficient."
         },
         {
-          "id": "rel-admin-views-checks",
-          "from": "admin-evaluator",
-          "to": "check",
-          "phrase": "views list of",
+          "id": "rel-data-request-review-uses-llm",
+          "from": "data-request-review",
+          "to": "llm",
+          "phrase": "is performed by",
           "category": "uses",
-          "description": "The admin/evaluator views the list of defined checks in order to understand and manage how AI responses are evaluated."
+          "description": "A data request review is performed by an LLM-based Slackbot AI assistant that interprets the user's Slack message and generates review artifacts."
         },
         {
-          "id": "rel-admin-creates-check",
-          "from": "admin-evaluator",
-          "to": "check",
-          "phrase": "creates",
-          "category": "causes",
-          "description": "The admin/evaluator creates new checks using the CheckForm to define evaluation criteria for AI behavior."
-        },
-        {
-          "id": "rel-admin-updates-check",
-          "from": "admin-evaluator",
-          "to": "check",
-          "phrase": "updates",
-          "category": "causes",
-          "description": "The admin/evaluator edits existing checks to refine or correct evaluation criteria."
-        },
-        {
-          "id": "rel-admin-deletes-check",
-          "from": "admin-evaluator",
-          "to": "check",
-          "phrase": "deletes",
-          "category": "causes",
-          "description": "The admin/evaluator can delete checks that are no longer needed."
-        },
-        {
-          "id": "rel-admin-creates-template",
-          "from": "admin-evaluator",
-          "to": "template",
-          "phrase": "creates",
-          "category": "causes",
-          "description": "The admin/evaluator creates templates that define how the AI should respond to Slack data requests."
-        },
-        {
-          "id": "rel-admin-edits-template-version",
-          "from": "admin-evaluator",
-          "to": "template-version",
-          "phrase": "edits",
-          "category": "causes",
-          "description": "The admin/evaluator edits specific template versions in the Template Manager to change prompt content or configuration."
-        },
-        {
-          "id": "rel-admin-activates-template-version",
-          "from": "admin-evaluator",
-          "to": "template-version",
-          "phrase": "marks as active",
-          "category": "causes",
-          "description": "The admin/evaluator explicitly activates a template version to make it the version used in production, after review and testing."
-        },
-        {
-          "id": "rel-admin-runs-test-cases",
-          "from": "admin-evaluator",
-          "to": "test-case",
-          "phrase": "runs",
-          "category": "causes",
-          "description": "The admin/evaluator runs test cases against templates and checks to validate AI behavior before or after deployment."
-        },
-        {
-          "id": "rel-admin-reviews-test-results",
-          "from": "admin-evaluator",
-          "to": "test-result",
-          "phrase": "reviews",
-          "category": "uses",
-          "description": "The admin/evaluator inspects test results to assess whether templates and checks are producing acceptable AI behavior."
-        },
-        {
-          "id": "rel-admin-views-data-requests",
-          "from": "admin-evaluator",
-          "to": "data-request-thread",
-          "phrase": "views",
-          "category": "uses",
-          "description": "The admin/evaluator views Slack data request threads (including status, requester, artifacts, and confidence) in the DataRequestsList page."
-        },
-        {
-          "id": "rel-admin-inspects-artifacts",
-          "from": "admin-evaluator",
-          "to": "ai-artifact",
-          "phrase": "inspects",
-          "category": "uses",
-          "description": "The admin/evaluator inspects AI-generated artifacts (request interpretation, clarifying questions, step-by-step instructions) attached to data request threads to understand and improve AI behavior."
-        },
-        {
-          "id": "rel-admin-governs-ai-handling",
-          "from": "admin-evaluator",
-          "to": "ai-handling-of-data-requests",
-          "phrase": "governs and improves",
-          "category": "causes",
-          "description": "By configuring templates, defining checks, and running tests, the admin/evaluator governs and iteratively improves how the AI handles Slack data requests."
-        },
-        {
-          "id": "rel-data-store-uses-firestore",
-          "from": "data-store",
-          "to": "firestore-service",
-          "phrase": "is implemented using",
-          "category": "represents",
-          "description": "The data store is realized using Google Cloud Firestore as the underlying storage service for persisting system data."
-        },
-        {
-          "id": "rel-data-store-used-by-worker",
-          "from": "worker-app",
-          "to": "data-store",
-          "phrase": "uses",
-          "category": "uses",
-          "description": "The worker application obtains a Firestore handle via getDb and uses the shared data store to persist and retrieve domain data."
-        },
-        {
-          "id": "rel-data-store-used-by-ingest",
-          "from": "ingest-app",
-          "to": "data-store",
-          "phrase": "uses",
-          "category": "uses",
-          "description": "The ingest application obtains a Firestore handle via getDb and uses the shared data store to persist and retrieve ingested data."
-        },
-        {
-          "id": "rel-data-store-used-by-evals-ui",
-          "from": "evals-app",
-          "to": "data-store",
-          "phrase": "uses",
-          "category": "uses",
-          "description": "The evals UI application initializes a Firebase app and obtains a Firestore instance (db) to access the shared data store from the client side."
-        },
-        {
-          "id": "rel-data-store-contains-threads",
-          "from": "data-store",
-          "to": "thread",
-          "phrase": "contains",
+          "id": "rel-data-request-review-occurs-in-slack-data-request-flow",
+          "from": "data-request-review",
+          "to": "slack-data-request-flow",
+          "phrase": "is a step in",
           "category": "part_of",
-          "description": "The data store contains a collection of threads, each identified by a root timestamp or similar identifier."
+          "description": "A data request review is a distinct step within the overall Slack Data Request Flow, occurring after a user submits a request and before the user or data team acts on it."
         },
         {
-          "id": "rel-data-store-contains-thread-debug-events",
-          "from": "data-store",
-          "to": "debug-event",
-          "phrase": "stores as subcollection of thread",
-          "category": "part_of",
-          "description": "For each thread, the data store can hold a debugEvents subcollection where individual debug events related to that thread are persisted."
-        },
-        {
-          "id": "rel-debug-event-belongs-to-thread",
-          "from": "debug-event",
-          "to": "thread",
+          "id": "rel-thread-status-belongs-to-thread",
+          "from": "thread-status",
+          "to": "slack-thread",
           "phrase": "belongs to",
           "category": "part_of",
-          "description": "Each debug event is stored under a specific thread document (threads/{rootTs}/debugEvents/{eventId}), indicating that the event is associated with that thread."
+          "description": "Each thread status is associated with exactly one Slack thread, identified by its root_ts, and describes that thread's current processing state in the system."
         },
         {
-          "id": "rel-record-debug-event-uses-data-store",
-          "from": "record-debug-event-operation",
-          "to": "data-store",
-          "phrase": "writes to",
+          "id": "rel-thread-status-updated-by-worker",
+          "from": "thread-status",
+          "to": "worker-service",
+          "phrase": "is updated by",
           "category": "uses",
-          "description": "The recordDebugEvent operation uses the data store to persist debug events under the appropriate thread document."
+          "description": "Thread status is updated by the worker service via the updateThreadStatus(rootTs, status) function as the system processes Slack threads."
         },
         {
-          "id": "rel-record-error-uses-data-store",
-          "from": "record-error-operation",
-          "to": "data-store",
-          "phrase": "writes debug event to",
+          "id": "rel-thread-status-stored-in-threads-collection",
+          "from": "thread-status",
+          "to": "threads-collection",
+          "phrase": "is stored in",
+          "category": "part_of",
+          "description": "Thread status is persisted as part of the thread document in the threads collection (threads/<root_ts>) in the backing data store."
+        },
+        {
+          "id": "rel-slack-bot-interaction-uses-slack-thread",
+          "from": "slack-bot-interaction",
+          "to": "slack-thread",
+          "phrase": "occurs in",
+          "category": "part_of",
+          "description": "Each Slack bot interaction occurs within a specific Slack thread, identified by a channel and a root message timestamp (rootTs) used as thread_ts."
+        },
+        {
+          "id": "rel-slack-bot-interaction-uses-robot-reaction",
+          "from": "slack-bot-interaction",
+          "to": "slack-reaction",
+          "phrase": "includes",
+          "category": "part_of",
+          "description": "A Slack bot interaction may include the bot adding a robot_face reaction to the root message to acknowledge the request."
+        },
+        {
+          "id": "rel-slack-bot-interaction-uses-greeting",
+          "from": "slack-bot-interaction",
+          "to": "slack-thread-greeting",
+          "phrase": "starts with",
+          "category": "precedes",
+          "description": "A Slack bot interaction may begin with the bot posting a greeting message in the thread associated with the root message."
+        },
+        {
+          "id": "rel-slack-bot-interaction-uses-text-message",
+          "from": "slack-bot-interaction",
+          "to": "slack-thread-text-message",
+          "phrase": "sends",
           "category": "uses",
-          "description": "The recordError operation logs an error and then uses the data store to record a corresponding debug event for a given thread."
+          "description": "During a Slack bot interaction, the bot sends one or more text messages into the thread using chat.postMessage with a text payload."
+        },
+        {
+          "id": "rel-slack-bot-interaction-uses-block-message",
+          "from": "slack-bot-interaction",
+          "to": "slack-thread-block-message",
+          "phrase": "sends",
+          "category": "uses",
+          "description": "During a Slack bot interaction, the bot may send one or more block-based messages into the thread using chat.postMessage with blocks payload."
+        },
+        {
+          "id": "rel-slack-bot-interaction-produces-debug-event",
+          "from": "slack-bot-interaction",
+          "to": "debug-event",
+          "phrase": "produces",
+          "category": "causes",
+          "description": "Each outgoing Slack text message from the bot causes a debug event of type 'outgoing_slack_message' to be recorded, capturing channel, threadTs, text, and messageType."
+        },
+        {
+          "id": "rel-debug-event-represents-slack-bot-message",
+          "from": "debug-event",
+          "to": "slack-bot-interaction",
+          "phrase": "represents",
+          "category": "represents",
+          "description": "An outgoing_slack_message debug event represents a specific bot message within a Slack bot interaction, allowing later inspection of the interaction."
+        },
+        {
+          "id": "rel-slack-verification-uses-signature",
+          "from": "slack-security-verification",
+          "to": "slack-request-signature",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "Slack security verification uses the Slack-provided request signature value to determine whether the request is authentic."
+        },
+        {
+          "id": "rel-slack-verification-uses-timestamp",
+          "from": "slack-security-verification",
+          "to": "slack-request-timestamp",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "Slack security verification uses the Slack-provided request timestamp to detect and reject stale or replayed requests."
+        },
+        {
+          "id": "rel-slack-verification-uses-raw-body",
+          "from": "slack-security-verification",
+          "to": "slack-raw-request-body",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "Slack security verification uses the exact raw HTTP request body as part of the base string for HMAC computation, ensuring that any tampering with the body invalidates the signature."
+        },
+        {
+          "id": "rel-slack-verification-uses-signing-secret",
+          "from": "slack-security-verification",
+          "to": "slack-signing-secret",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "Slack security verification uses the shared Slack signing secret to compute the expected HMAC signature for comparison with the provided signature."
+        },
+        {
+          "id": "rel-slack-verification-prevents-replay",
+          "from": "slack-security-verification",
+          "to": "slack-request-replay-attack",
+          "phrase": "prevents",
+          "category": "prevents",
+          "description": "Slack security verification prevents replay attacks by rejecting requests whose timestamps are outside the allowed time window."
+        },
+        {
+          "id": "rel-slack-verification-prevents-tampering",
+          "from": "slack-security-verification",
+          "to": "slack-request-tampering",
+          "phrase": "prevents",
+          "category": "prevents",
+          "description": "Slack security verification prevents processing of tampered Slack requests by rejecting any request whose computed HMAC does not match the provided signature."
+        },
+        {
+          "id": "rel-slack-verification-enables-trust",
+          "from": "slack-security-verification",
+          "to": "trusted-slack-request",
+          "phrase": "enables",
+          "category": "enables",
+          "description": "Slack security verification enables classification of an incoming Slack request as trusted when the signature and timestamp checks succeed."
         }
       ],
       "rules": [
         {
-          "id": "rule-slack-user-optional-in-event-envelope",
-          "title": "Slack user may be absent in some event envelopes",
-          "text": "In an EventEnvelope, the `user` field is optional, meaning some Slack events processed by the system may not be associated with a specific Slack user (for example, system messages or events without a user context).",
+          "id": "rule-slack-user-identified-by-id-string",
+          "title": "Slack user is identified by a user ID string",
+          "text": "Within the Slack Data Request Flow, a Slack user is represented by a user identifier string (e.g., EventEnvelope.user, TaskPayload.user, TestExecutionTaskPayload.userId, PromptTemplate.createdBy) rather than by a full user profile object.",
           "kind": "assumption",
           "conceptIds": [
             "slack-user"
           ]
         },
         {
-          "id": "rule-slack-user-optional-in-task-payload",
-          "title": "Slack user may be absent in some task payloads",
-          "text": "In a TaskPayload, the `user` field is optional, so not every task derived from Slack activity must be tied to a specific Slack user in the system.",
+          "id": "rule-slack-user-may-be-absent-on-events",
+          "title": "Slack user may be missing on some events",
+          "text": "EventEnvelope.user is optional, so some events may not be associated with a specific Slack user (for example, system-generated or bot-generated events).",
           "kind": "assumption",
           "conceptIds": [
             "slack-user"
           ]
         },
         {
-          "id": "rule-test-execution-task-requires-user-id",
-          "title": "Test execution task must have a user ID",
-          "text": "A TestExecutionTaskPayload must include a `userId`, ensuring that every test execution task is associated with a specific user identity.",
+          "id": "rule-channel-required-for-slack-actions",
+          "title": "Channel is required for Slack actions",
+          "text": "Any bot action that posts a message or adds a reaction in Slack must specify a valid Slack channel identifier.",
           "kind": "constraint",
           "conceptIds": [
-            "slack-user"
+            "slack-channel"
           ]
         },
         {
-          "id": "rule-slack-thread-must-have-channel-and-rootTs",
-          "title": "Slack thread must be identified by channel and root timestamp",
-          "text": "Any operation that posts messages or reactions in the context of a Slack thread must specify both the Slack channel identifier and the root thread timestamp (rootTs/threadTs) to correctly target the conversation.",
+          "id": "rule-single-channel-per-event-envelope",
+          "title": "EventEnvelope has exactly one channel",
+          "text": "Each EventEnvelope is associated with exactly one Slack channel, represented by its channel ID string.",
+          "kind": "invariant",
+          "conceptIds": [
+            "slack-channel"
+          ]
+        },
+        {
+          "id": "rule-single-channel-per-task-payload",
+          "title": "TaskPayload has exactly one channel",
+          "text": "Each TaskPayload references exactly one Slack channel where the related thread or message exists.",
+          "kind": "invariant",
+          "conceptIds": [
+            "slack-channel"
+          ]
+        },
+        {
+          "id": "rule-slack-thread-identified-by-rootts",
+          "title": "Slack thread is identified by root timestamp within a channel",
+          "text": "Within this system, a Slack thread is uniquely identified by the combination of its channel ID and the timestamp of its root message (rootTs / thread_ts). All bot actions and debug events related to a thread must use this pair.",
           "kind": "invariant",
           "conceptIds": [
             "slack-thread"
           ]
         },
         {
-          "id": "rule-slack-thread-rootTs-is-stable-identifier",
-          "title": "Slack thread rootTs is the stable identifier for the thread",
-          "text": "Within the system, the root message timestamp (rootTs or threadTs) is treated as the stable identifier for a Slack thread and is reused across task payloads, Slack API calls, and debug events to correlate all actions in that thread.",
+          "id": "rule-slack-thread-bot-messages-use-thread-ts",
+          "title": "Bot messages in a thread must set thread_ts to the root message timestamp",
+          "text": "When the bot posts a message intended to belong to a Slack thread, it must set the thread_ts field to the root message timestamp so that Slack associates the message with the correct thread.",
+          "kind": "constraint",
+          "conceptIds": [
+            "slack-thread"
+          ]
+        },
+        {
+          "id": "rule-slack-thread-robot-reaction-on-root",
+          "title": "Robot reaction is applied to the root message of the thread",
+          "text": "When marking a Slack thread as being handled by the system, the robot_face reaction is added to the root message timestamp of that thread, not to replies.",
+          "kind": "policy",
+          "conceptIds": [
+            "slack-thread"
+          ]
+        },
+        {
+          "id": "rule-slack-thread-debug-events-keyed-by-rootts",
+          "title": "Debug events for a thread are keyed by the thread root timestamp",
+          "text": "All debug events related to a Slack thread, such as outgoing Slack messages, must be recorded using the thread's root timestamp as the primary identifier to correlate events with the thread.",
           "kind": "assumption",
           "conceptIds": [
             "slack-thread"
           ]
         },
         {
-          "id": "rule-slack-thread-bot-messages-are-threaded",
-          "title": "Bot messages in a Slack thread must be posted as threaded replies",
-          "text": "When the system responds in a Slack thread, it must use the root thread timestamp as thread_ts so that all bot messages appear as replies within the same Slack thread rather than as new top-level channel messages.",
-          "kind": "policy",
-          "conceptIds": [
-            "slack-thread"
-          ]
-        },
-        {
-          "id": "rule-data-request-must-be-classified",
-          "title": "Data request must be identified by classification",
-          "text": "A Slack thread or message is treated as a data request only if the LLM-based classification step determines that it is a data request.",
+          "id": "rule-slack-message-requires-bot-token",
+          "title": "Outgoing Slack messages require a valid bot token",
+          "text": "A Slack message can only be posted by the system if a valid Slack bot token (SLACK_BOT_TOKEN) is configured; otherwise, message posting fails.",
           "kind": "constraint",
           "conceptIds": [
-            "data-request"
+            "slack-message"
           ]
         },
         {
-          "id": "rule-data-request-has-review-artifacts",
-          "title": "Data request review artifacts must be produced",
-          "text": "For each confirmed data request, the AI assistant produces a structured review result containing a refined request, clarifying questions (possibly empty), step-by-step instructions (possibly empty), and a direct answer (possibly empty).",
+          "id": "rule-slack-message-must-specify-channel-and-thread",
+          "title": "Slack thread messages must specify channel and root thread timestamp",
+          "text": "When the system posts a Slack message into a thread, it must include both the channel identifier and the root thread timestamp (rootTs) to correctly associate the message with the thread.",
           "kind": "invariant",
           "conceptIds": [
-            "data-request"
+            "slack-message"
           ]
         },
         {
-          "id": "rule-clarifying-questions-gate-user-facing-output",
-          "title": "Clarifying questions gate what is shown to the user",
-          "text": "If a data request has any clarifying questions, only those clarifying questions are shown to the user; the refined request, step-by-step instructions, and direct answer are retained for later iteration but not initially shown.",
+          "id": "rule-slack-message-debug-event-recording",
+          "title": "Outgoing Slack messages are recorded as debug events",
+          "text": "For each outgoing Slack message posted by the system, a corresponding debug event of type 'outgoing_slack_message' should be recorded with timestamp, channel, threadTs, text, and messageType, unless recording fails.",
           "kind": "policy",
           "conceptIds": [
-            "data-request"
+            "slack-message"
           ]
         },
         {
-          "id": "rule-no-clarifying-questions-shows-instructions-or-request",
-          "title": "When no clarifying questions remain, show instructions or request",
-          "text": "When a data request has no remaining clarifying questions, the user is shown the step-by-step self-service instructions if they exist; otherwise, the user is shown the well-documented request produced by the AI assistant.",
-          "kind": "policy",
+          "id": "rule-slack-message-error-handling",
+          "title": "Slack message posting must handle Slack API errors",
+          "text": "If the Slack API returns a non-OK HTTP status or an error response (other than 'already_reacted'), the system treats this as a failure to post or react to a Slack message.",
+          "kind": "assumption",
           "conceptIds": [
-            "data-request"
+            "slack-message"
           ]
         },
         {
-          "id": "rule-direct-answer-only-for-meta-questions",
-          "title": "Direct answer only for meta questions",
-          "text": "A direct answer is provided only when the data request is a meta question about field meanings, business terminology, or data structures, and must not be used for questions about actual data values, metrics, numbers, counts, or specific data content.",
+          "id": "rule-data-vs-meta",
+          "title": "Data Request vs Meta Question",
+          "text": "If a user question is about actual data values, metrics, numbers, counts, or specific data content, it must be treated as a Data Request. If a question is only about field meanings, business terminology, or data structures and does not ask for specific data values, it must be treated as a direct answer and not as a Data Request.",
           "kind": "policy",
           "conceptIds": [
             "data-request"
           ]
         },
         {
-          "id": "rule-data-questions-treated-as-data-requests",
-          "title": "Questions involving actual data are treated as data requests",
-          "text": "If a user question touches on actual data values, metrics, numbers, counts, or specific data content, it must be treated as a data request and handled via the request and step-by-step instructions artifacts rather than as a direct answer.",
+          "id": "rule-clarifying-questions-gate",
+          "title": "Clarifying Questions Gate Visibility",
+          "text": "When clarifying questions exist for a Data Request, only the clarifying questions are shown to the user; the well-documented request and other artifacts are kept internal until the clarifying questions are resolved.",
           "kind": "policy",
           "conceptIds": [
             "data-request"
           ]
         },
         {
-          "id": "rule-ai-worker-requires-thread-identifiers",
-          "title": "AI worker requires channel and root thread timestamp",
-          "text": "The AI worker only processes a task payload when both a Slack channel identifier and a root thread timestamp are present; otherwise it performs no work.",
-          "kind": "constraint",
-          "conceptIds": [
-            "ai-worker"
-          ]
-        },
-        {
-          "id": "rule-ai-worker-one-reaction-per-thread",
-          "title": "AI worker adds robot reaction at most once per thread",
-          "text": "The AI worker checks the thread record before adding a robot reaction and only adds the reaction if the thread has not already been marked as reacted.",
-          "kind": "invariant",
-          "conceptIds": [
-            "ai-worker"
-          ]
-        },
-        {
-          "id": "rule-ai-worker-one-greeting-per-thread",
-          "title": "AI worker greets at most once per thread",
-          "text": "The AI worker checks the thread record before posting a greeting and only greets if the thread has not already been marked as greeted.",
-          "kind": "invariant",
-          "conceptIds": [
-            "ai-worker"
-          ]
-        },
-        {
-          "id": "rule-ai-worker-updates-thread-timestamp",
-          "title": "AI worker updates thread last-updated time",
-          "text": "Whenever the AI worker processes a thread, it updates the thread record's updatedAt timestamp to the current time.",
-          "kind": "invariant",
-          "conceptIds": [
-            "ai-worker"
-          ]
-        },
-        {
-          "id": "rule-prompt-template-must-have-id-name-template",
-          "title": "Prompt Template must have core identifiers and content",
-          "text": "Each Prompt Template must have an id, a name, and a template string defined.",
-          "kind": "invariant",
-          "conceptIds": [
-            "prompt-template"
-          ]
-        },
-        {
-          "id": "rule-prompt-template-version-required",
-          "title": "Prompt Template must have a version number",
-          "text": "Each Prompt Template instance must specify a numeric version to distinguish it from other versions.",
-          "kind": "invariant",
-          "conceptIds": [
-            "prompt-template"
-          ]
-        },
-        {
-          "id": "rule-prompt-template-active-version-must-exist",
-          "title": "Active Prompt Template version must exist",
-          "text": "When fetching an active Prompt Template, the metadata document must exist and its activeVersion must correspond to an existing version document.",
-          "kind": "constraint",
-          "conceptIds": [
-            "prompt-template"
-          ]
-        },
-        {
-          "id": "rule-prompt-template-variables-derived-from-template",
-          "title": "Prompt Template variables are derived from template content",
-          "text": "The variables list of a Prompt Template is determined by extracting non-keyword identifiers from its EJS template string.",
-          "kind": "assumption",
-          "conceptIds": [
-            "prompt-template"
-          ]
-        },
-        {
-          "id": "rule-prompt-template-created-at-and-by-required",
-          "title": "Prompt Template records creation metadata",
-          "text": "Each Prompt Template version must record when it was created (createdAt) and by whom (createdBy).",
-          "kind": "invariant",
-          "conceptIds": [
-            "prompt-template"
-          ]
-        },
-        {
-          "id": "rule-evalcheck-requires-name",
-          "title": "Evaluation check must have a name",
-          "text": "Every evaluation check must have a non-empty name so that users can identify it.",
-          "kind": "constraint",
-          "conceptIds": [
-            "evaluation-check"
-          ]
-        },
-        {
-          "id": "rule-evalcheck-requires-criteria",
-          "title": "Evaluation check must define criteria",
-          "text": "Every evaluation check must have non-empty criteria text describing how to judge an AI response.",
-          "kind": "constraint",
-          "conceptIds": [
-            "evaluation-check"
-          ]
-        },
-        {
-          "id": "rule-evalcheck-has-model",
-          "title": "Evaluation check must specify an evaluation model",
-          "text": "Every evaluation check must specify which LLM model will be used to perform the evaluation.",
-          "kind": "constraint",
-          "conceptIds": [
-            "evaluation-check"
-          ]
-        },
-        {
-          "id": "rule-evalcheck-execution-optional-per-test",
-          "title": "Test run may have zero or more evaluation checks",
-          "text": "A test run may execute zero or more evaluation checks; if no check IDs are provided, no checks are executed.",
-          "kind": "assumption",
-          "conceptIds": [
-            "evaluation-check"
-          ]
-        },
-        {
-          "id": "rule-evalcheck-execution-produces-single-result",
-          "title": "Each evaluation check execution produces one result",
-          "text": "For a given test run and check, executing the evaluation check produces a single CheckResult with pass or fail status and reasoning.",
-          "kind": "assumption",
-          "conceptIds": [
-            "evaluation-check"
-          ]
-        },
-        {
-          "id": "rule-test-case-must-have-name-and-id",
-          "title": "Test case must have identifier and name",
-          "text": "Every test case must have a unique id and a non-empty name to be created and used in the evals UI.",
-          "kind": "invariant",
-          "conceptIds": [
-            "test-case"
-          ]
-        },
-        {
-          "id": "rule-test-case-must-specify-input-variables",
-          "title": "Test case must specify input variables",
-          "text": "Every test case must define inputVariables, providing concrete values for some or all variables required by the associated prompt template.",
-          "kind": "invariant",
-          "conceptIds": [
-            "test-case"
-          ]
-        },
-        {
-          "id": "rule-test-case-may-select-zero-or-more-checks",
-          "title": "Test case may select zero or more checks",
-          "text": "A test case may specify an empty or non-empty list of checkIds; if checkIds is empty, the test run will not produce check results.",
-          "kind": "assumption",
-          "conceptIds": [
-            "test-case"
-          ]
-        },
-        {
-          "id": "rule-test-case-records-authorship-and-timestamps",
-          "title": "Test case records authorship and timestamps",
-          "text": "Each test case records createdBy, createdAt, and updatedAt to track who created it and when it was created or last modified.",
-          "kind": "invariant",
-          "conceptIds": [
-            "test-case"
-          ]
-        },
-        {
-          "id": "rule-test-run-must-reference-test-case",
-          "title": "Test run must reference originating test case",
-          "text": "Every test run (pass, fail, or error) must reference the originating test case via testCaseId.",
-          "kind": "invariant",
-          "conceptIds": [
-            "test-case"
-          ]
-        },
-        {
-          "id": "rule-test-batch-requires-authenticated-user",
-          "title": "Test batch creation requires an authenticated user",
-          "text": "A test batch can only be created when there is an authenticated user; otherwise, test execution is rejected.",
-          "kind": "constraint",
-          "conceptIds": [
-            "test-batch"
-          ]
-        },
-        {
-          "id": "rule-test-batch-requires-template-and-test-case",
-          "title": "Test batch requires template and test case identifiers",
-          "text": "To create a test batch and enqueue its test execution tasks, a templateId, inputVariables, and testCaseId must be provided; otherwise, the operation is considered invalid.",
-          "kind": "constraint",
-          "conceptIds": [
-            "test-batch"
-          ]
-        },
-        {
-          "id": "rule-all-test-executions-belong-to-batch",
-          "title": "All test executions must belong to a batch",
-          "text": "Every test execution is associated with exactly one test batch, identified by batchId in the TestExecutionTaskPayload. The system enforces that all test executions are part of batches.",
-          "kind": "invariant",
-          "conceptIds": [
-            "test-batch"
-          ]
-        },
-        {
-          "id": "rule-test-batch-has-unique-identifier",
-          "title": "Test batch has a unique batch identifier",
-          "text": "Each test batch is assigned a unique batchId when created, and this identifier is used to associate test execution tasks and results with the batch.",
-          "kind": "assumption",
-          "conceptIds": [
-            "test-batch"
-          ]
-        },
-        {
-          "id": "rule-test-batch-can-be-single-test",
-          "title": "Test batch may contain a single test case",
-          "text": "A test batch may be created for a single test case, allowing even individual test executions to be tracked and analyzed as batches.",
-          "kind": "assumption",
-          "conceptIds": [
-            "test-batch"
-          ]
-        },
-        {
-          "id": "rule-eval-pass-has-request-thread-elapsed",
-          "title": "Passing evaluation result must include request, thread, and elapsed time",
-          "text": "When an evaluation result has status 'pass', it must include requestId, threadId, and elapsedMs.",
-          "kind": "invariant",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-eval-fail-has-request-thread-elapsed-checks",
-          "title": "Failing evaluation result must include request, thread, elapsed time, and check results",
-          "text": "When an evaluation result has status 'fail', it must include requestId, threadId, elapsedMs, and a non-empty list of checkResults.",
-          "kind": "invariant",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-eval-error-no-request-required",
-          "title": "Errored evaluation result may lack template version and request linkage",
-          "text": "When an evaluation result has status 'error', templateVersion may be absent and request-related identifiers may not be available, because the template or request may have failed before execution.",
-          "kind": "assumption",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-check-result-status-binary",
-          "title": "Check result status is binary",
-          "text": "Each check result must have a status of either 'pass' or 'fail'.",
-          "kind": "invariant",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-eval-overall-status-binary",
-          "title": "Overall evaluation status is pass or fail for completed executions",
-          "text": "For completed test executions represented by TestExecutionResult, overallStatus must be either 'pass' or 'fail'.",
-          "kind": "invariant",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-eval-links-to-testcase-template-user",
-          "title": "Evaluation result must link to test case, template, and executor",
-          "text": "Every evaluation result must reference the test case (testCaseId), the prompt template (templateId), and the user who executed it (executedBy).",
-          "kind": "invariant",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-check-result-links-to-check-and-eval",
-          "title": "Check result must link to check and evaluation result",
-          "text": "Every check result must reference the check it executed (checkId) and the evaluation result it belongs to (testRunId).",
-          "kind": "invariant",
-          "conceptIds": [
-            "evaluation-result"
-          ]
-        },
-        {
-          "id": "rule-admin-must-be-authenticated",
-          "title": "Admin/evaluator must be authenticated to use evaluation tools",
-          "text": "An admin/evaluator must be an authenticated user (via Firebase/Google sign-in) before they can access or modify checks, templates, test cases, or view data request threads in the evals UI.",
-          "kind": "constraint",
-          "conceptIds": [
-            "admin-evaluator"
-          ]
-        },
-        {
-          "id": "rule-admin-explicit-template-activation",
-          "title": "Template changes require explicit activation by admin/evaluator",
-          "text": "Saving changes to a template creates a new template version but does not automatically activate it; an admin/evaluator must perform an explicit 'Make Active' action to deploy that version, allowing review and testing before it affects live AI behavior.",
+          "id": "rule-no-clarifying-questions-display",
+          "title": "Display Instructions or Request When Clear",
+          "text": "When a Data Request has no remaining clarifying questions, the system shows the user step-by-step self-service instructions if available; otherwise, it shows the well-documented request.",
           "kind": "policy",
           "conceptIds": [
-            "admin-evaluator"
+            "data-request"
           ]
         },
         {
-          "id": "rule-admin-governs-eval-scope",
-          "title": "Admin/evaluator operates only within evaluation and governance scope",
-          "text": "The admin/evaluator interacts with checks, templates, test cases, test results, and data request threads for evaluation and governance purposes, and does not originate Slack data requests as part of this role.",
+          "id": "rule-iteration-updates-artifacts",
+          "title": "Iteration Must Update Artifacts",
+          "text": "Each iteration on a Data Request must update the artifacts (request, clarifying questions, step-by-step instructions, direct answer) to reflect the latest Slack thread messages and previously produced artifacts, removing clarifying questions that have been fully answered.",
           "kind": "assumption",
           "conceptIds": [
-            "admin-evaluator"
+            "data-request"
           ]
         },
         {
-          "id": "rule-data-store-ignore-undefined",
-          "title": "Data store ignores undefined properties",
-          "text": "When the backend applications create Firestore clients for the data store, they configure them to ignore undefined properties, so undefined fields are not written to stored documents.",
-          "kind": "assumption",
-          "conceptIds": [
-            "data-store"
-          ]
-        },
-        {
-          "id": "rule-debug-event-id-format",
-          "title": "Debug event identifier format",
-          "text": "Each debug event stored in the data store under a thread must have a document ID composed of the event type, an underscore, and the event timestamp (event.type + '_' + event.timestamp).",
-          "kind": "invariant",
-          "conceptIds": [
-            "data-store"
-          ]
-        },
-        {
-          "id": "rule-debug-event-location",
-          "title": "Debug events stored under thread debugEvents subcollection",
-          "text": "Debug events are stored in the data store as documents in a debugEvents subcollection under the corresponding thread document in the threads collection.",
-          "kind": "invariant",
-          "conceptIds": [
-            "data-store"
-          ]
-        },
-        {
-          "id": "rule-debug-event-write-non-fatal",
-          "title": "Failure to record debug event is non-fatal",
-          "text": "If recording a debug event to the data store fails, the system logs the failure but does not propagate the error, allowing the main operation to continue.",
+          "id": "rule-request-should-be-unambiguous",
+          "title": "Request Should Be Well Documented and Unambiguous",
+          "text": "The LLM review process must aim to produce a clear, well-documented, and unambiguous Data Request that refers to existing data in a way that makes it simple for an analyst to extract the required data, explicitly calling out any assumptions.",
           "kind": "policy",
           "conceptIds": [
-            "data-store"
+            "data-request"
           ]
         },
         {
-          "id": "rule-data-store-shared-across-apps",
-          "title": "Single shared data store across system components",
-          "text": "Worker, ingest, and evals applications are expected to operate against the same logical data store so that threads and their associated debug events are consistently available across components.",
+          "id": "rule-data-request-iteration-removes-answered-questions",
+          "title": "Remove clarifying questions once fully answered",
+          "text": "During a data request iteration, if clarifying questions have been fully answered in the Slack thread, the updated artifacts must remove those clarifying questions.",
+          "kind": "invariant",
+          "conceptIds": [
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-iteration-refines-clear-request",
+          "title": "Refine request when it becomes clear",
+          "text": "During a data request iteration, if the data request is now clear based on the latest Slack messages, the iteration must refine and update the request artifact to reflect that clarity.",
+          "kind": "invariant",
+          "conceptIds": [
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-iteration-adds-self-service-when-possible",
+          "title": "Provide self-service instructions when feasible",
+          "text": "During a data request iteration, if the request can be satisfied via self-service in Looker, the iteration should provide or update step-by-step Looker instructions in the artifacts.",
+          "kind": "policy",
+          "conceptIds": [
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-iteration-direct-answer-scope",
+          "title": "Direct answers only for meta questions",
+          "text": "During a data request iteration, a direct answer artifact may be produced only for meta questions about field meanings, business terminology, data structure explanations, or how data is organized, and must not be used for questions about actual data values, metrics, numbers, counts, or specific data content.",
+          "kind": "constraint",
+          "conceptIds": [
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-iteration-data-questions-treated-as-requests",
+          "title": "Treat data-value questions as data requests",
+          "text": "During a data request iteration, if the user question involves actual data values, metrics, numbers, counts, or specific data content, the iteration must treat it as a data request and use the request and step-by-step instructions artifacts instead of a direct answer artifact.",
+          "kind": "constraint",
+          "conceptIds": [
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-iteration-uses-full-thread-and-latest-reply",
+          "title": "Iteration must consider full Slack thread and latest reply",
+          "text": "Each data request iteration must consider the full Slack thread so far and the latest user reply when updating artifacts, ensuring that new information and answers are incorporated.",
           "kind": "assumption",
           "conceptIds": [
-            "data-store"
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-iteration-updates-not-recreates",
+          "title": "Iteration updates existing artifacts rather than starting from scratch",
+          "text": "A data request iteration should update the latest artifacts it previously produced (request, clarifying questions, self-service steps, direct answer) instead of discarding them and generating unrelated artifacts.",
+          "kind": "policy",
+          "conceptIds": [
+            "data-request-iteration"
+          ]
+        },
+        {
+          "id": "rule-data-request-review-must-produce-structured-output",
+          "title": "Data request review must produce all review artifacts in structured form",
+          "text": "A data request review must return a structured result containing four fields: a well-documented request, clarifying questions, step-by-step instructions for self-service (if applicable), and a direct answer for meta questions.",
+          "kind": "constraint",
+          "conceptIds": [
+            "data-request-review"
+          ]
+        },
+        {
+          "id": "rule-data-request-review-shows-only-clarifying-questions-when-present",
+          "title": "Clarifying questions take precedence in user-facing output",
+          "text": "If a data request review produces any clarifying questions, only those clarifying questions are shown to the user at that stage; the other artifacts are retained for later iteration after the user responds.",
+          "kind": "policy",
+          "conceptIds": [
+            "data-request-review"
+          ]
+        },
+        {
+          "id": "rule-data-request-review-shows-instructions-or-request-when-no-questions",
+          "title": "Instructions or well-documented request are shown when no clarifying questions remain",
+          "text": "When a data request review produces no clarifying questions, the system shows the user the step-by-step self-service instructions if they are available; otherwise, it shows the well-documented request produced by the review.",
+          "kind": "policy",
+          "conceptIds": [
+            "data-request-review"
+          ]
+        },
+        {
+          "id": "rule-data-request-review-direct-answer-scope",
+          "title": "Direct answers limited to meta questions",
+          "text": "A data request review may provide a direct answer only for meta questions about field meanings, business terminology, or data structures, and must not directly answer questions about actual data values, metrics, or numbers.",
+          "kind": "policy",
+          "conceptIds": [
+            "data-request-review"
+          ]
+        },
+        {
+          "id": "rule-data-request-review-must-call-out-assumptions",
+          "title": "Assumptions must be explicit",
+          "text": "During a data request review, the reviewer may make reasonable assumptions to clarify the request but must explicitly call out those assumptions so they can be corrected if wrong.",
+          "kind": "policy",
+          "conceptIds": [
+            "data-request-review"
+          ]
+        },
+        {
+          "id": "rule-thread-status-requires-thread-identifier",
+          "title": "Thread status is always tied to a specific root_ts",
+          "text": "A thread status must always be associated with a specific Slack thread, identified by its root_ts; updating thread status requires providing this root_ts.",
+          "kind": "constraint",
+          "conceptIds": [
+            "thread-status"
+          ]
+        },
+        {
+          "id": "rule-thread-status-represents-processing-state",
+          "title": "Thread status reflects processing progress",
+          "text": "Thread status must represent the current processing state of the Slack thread within the system's pipeline (e.g., new, classified, in progress, completed, error).",
+          "kind": "assumption",
+          "conceptIds": [
+            "thread-status"
+          ]
+        },
+        {
+          "id": "rule-slack-bot-interaction-requires-bot-token",
+          "title": "Slack bot interaction requires a configured bot token",
+          "text": "A Slack bot interaction can only proceed if a valid Slack bot token (SLACK_BOT_TOKEN) is configured; otherwise, Slack API calls for reactions and messages must not be executed.",
+          "kind": "constraint",
+          "conceptIds": [
+            "slack-bot-interaction"
+          ]
+        },
+        {
+          "id": "rule-slack-bot-interaction-anchored-by-root-message",
+          "title": "Slack bot interaction is anchored by a root message",
+          "text": "Every Slack bot interaction is anchored to a root Slack message identified by a root timestamp (rootTs), which is used as the thread_ts for all bot messages and reactions in that interaction.",
+          "kind": "invariant",
+          "conceptIds": [
+            "slack-bot-interaction"
+          ]
+        },
+        {
+          "id": "rule-slack-bot-interaction-records-outgoing-text-messages",
+          "title": "Outgoing text messages are recorded as debug events",
+          "text": "For each outgoing text message the bot posts to a Slack thread, the system should attempt to record a corresponding outgoing_slack_message debug event with channel, threadTs, text, messageType, and timestamp.",
+          "kind": "policy",
+          "conceptIds": [
+            "slack-bot-interaction"
+          ]
+        },
+        {
+          "id": "rule-slack-bot-interaction-ignores-already-reacted-error",
+          "title": "Robot reaction ignores 'already_reacted' Slack error",
+          "text": "When adding a robot_face reaction as part of a Slack bot interaction, the system must treat the Slack 'already_reacted' error as non-fatal and continue the interaction.",
+          "kind": "policy",
+          "conceptIds": [
+            "slack-bot-interaction"
+          ]
+        },
+        {
+          "id": "rule-slack-verification-requires-inputs",
+          "title": "Slack verification requires all security inputs",
+          "text": "Slack security verification must treat a Slack request as unverified if any of the required security inputs (signature, timestamp, raw body, or signing secret) are missing or empty.",
+          "kind": "constraint",
+          "conceptIds": [
+            "slack-security-verification"
+          ]
+        },
+        {
+          "id": "rule-slack-verification-timestamp-window",
+          "title": "Slack verification enforces a 5-minute timestamp window",
+          "text": "Slack security verification must reject Slack requests whose timestamps differ from the current server time by more than five minutes, in order to limit replay and stale requests.",
+          "kind": "policy",
+          "conceptIds": [
+            "slack-security-verification"
+          ]
+        },
+        {
+          "id": "rule-slack-verification-valid-timestamp",
+          "title": "Slack verification requires a valid numeric timestamp",
+          "text": "Slack security verification must treat a Slack request as unverified if the provided timestamp cannot be interpreted as a finite numeric Unix timestamp in seconds.",
+          "kind": "constraint",
+          "conceptIds": [
+            "slack-security-verification"
+          ]
+        },
+        {
+          "id": "rule-slack-verification-hmac-match",
+          "title": "Slack verification requires HMAC signature match",
+          "text": "Slack security verification must reject a Slack request if the HMAC-based expected signature computed from the timestamp, raw body, and signing secret does not exactly match the provided Slack signature.",
+          "kind": "invariant",
+          "conceptIds": [
+            "slack-security-verification"
+          ]
+        },
+        {
+          "id": "rule-slack-verification-constant-time-compare",
+          "title": "Slack verification uses constant-time comparison",
+          "text": "Slack security verification must compare the provided Slack signature and the expected signature using a constant-time comparison to reduce susceptibility to timing attacks.",
+          "kind": "policy",
+          "conceptIds": [
+            "slack-security-verification"
+          ]
+        },
+        {
+          "id": "rule-slack-verification-binary-result",
+          "title": "Slack verification yields a binary decision",
+          "text": "Slack security verification must yield a binary outcome indicating whether the Slack request is verified (true) or not verified (false).",
+          "kind": "invariant",
+          "conceptIds": [
+            "slack-security-verification"
           ]
         }
       ],
       "lifecycles": [
         {
-          "id": "lifecycle-data-request-clarification-and-structuring",
+          "id": "lifecycle-data-request-status",
           "subjectConceptId": "data-request",
           "stateConceptIds": [
-            "unclassified-request",
-            "classified-non-data-request",
-            "classified-data-request",
-            "awaiting-clarification",
-            "ready-for-self-service-or-analyst"
+            "data-request-processing",
+            "data-request-accepted",
+            "data-request-rejected",
+            "data-request-unhandled"
           ],
           "transitionRelationshipIds": [],
-          "initialStateId": "unclassified-request",
+          "initialStateId": "data-request-processing",
           "terminalStateIds": [
-            "classified-non-data-request",
-            "ready-for-self-service-or-analyst"
+            "data-request-accepted",
+            "data-request-rejected",
+            "data-request-unhandled"
           ]
         },
         {
-          "id": "lifecycle-prompt-template-activation",
-          "subjectConceptId": "prompt-template",
+          "id": "lifecycle-data-request-review-basic",
+          "subjectConceptId": "data-request-review",
           "stateConceptIds": [
-            "prompt-template-inactive",
-            "prompt-template-active"
+            "data-request-review-with-clarifying-questions",
+            "data-request-review-without-clarifying-questions"
           ],
           "transitionRelationshipIds": [],
-          "initialStateId": "prompt-template-inactive",
+          "initialStateId": "data-request-review-with-clarifying-questions",
           "terminalStateIds": [
-            "prompt-template-active",
-            "prompt-template-inactive"
+            "data-request-review-without-clarifying-questions"
           ]
         },
         {
-          "id": "lifecycle-eval-result",
-          "subjectConceptId": "evaluation-result",
+          "id": "lifecycle-thread-status-processing",
+          "subjectConceptId": "thread-status",
           "stateConceptIds": [
-            "evaluation-result-pass",
-            "evaluation-result-fail",
-            "evaluation-result-error"
+            "thread-status-new",
+            "thread-status-classified",
+            "thread-status-in-progress",
+            "thread-status-completed",
+            "thread-status-error"
           ],
           "transitionRelationshipIds": [],
-          "initialStateId": "evaluation-result-pass",
+          "initialStateId": "thread-status-new",
           "terminalStateIds": [
-            "evaluation-result-pass",
-            "evaluation-result-fail",
-            "evaluation-result-error"
+            "thread-status-completed",
+            "thread-status-error"
+          ]
+        },
+        {
+          "id": "lifecycle-slack-verification-decision",
+          "subjectConceptId": "slack-security-verification",
+          "stateConceptIds": [
+            "slack-request-unverified",
+            "slack-request-verified",
+            "slack-request-rejected"
+          ],
+          "transitionRelationshipIds": [],
+          "initialStateId": "slack-request-unverified",
+          "terminalStateIds": [
+            "slack-request-verified",
+            "slack-request-rejected"
           ]
         }
       ],
-      "views": []
+      "views": [
+        {
+          "id": "slack-conversation-overview",
+          "name": "Slack conversation overview",
+          "description": "High-level view of how Slack users, channels, threads, and messages relate, and where data requests and bot interactions appear.",
+          "conceptIds": [
+            "slack-user",
+            "slack-channel",
+            "slack-thread",
+            "slack-message",
+            "data-request",
+            "thread-status",
+            "slack-bot-interaction"
+          ],
+          "relationshipIds": [
+            "rel-slack-user-participates-in-channel",
+            "rel-slack-channel-has-threads",
+            "rel-slack-thread-lives-in-channel",
+            "rel-slack-thread-channel",
+            "rel-slack-thread-root-message",
+            "rel-slack-thread-has-messages",
+            "rel-slack-message-in-thread",
+            "rel-slack-message-in-channel",
+            "rel-slack-thread-may-contain-data-request",
+            "rel-data-request-from-thread",
+            "rel-data-request-requester",
+            "rel-thread-status-belongs-to-thread",
+            "rel-slack-bot-interaction-uses-slack-thread"
+          ],
+          "layout": {
+            "groups": [
+              {
+                "id": "slack-zone",
+                "title": "Slack",
+                "x": 80,
+                "y": 60,
+                "width": 520,
+                "height": 520,
+                "conceptIds": [
+                  "slack-user",
+                  "slack-channel",
+                  "slack-thread",
+                  "slack-message",
+                  "slack-bot-interaction",
+                  "thread-status"
+                ]
+              },
+              {
+                "id": "data-request-zone",
+                "title": "Data request (structured)",
+                "x": 640,
+                "y": 220,
+                "width": 260,
+                "height": 220,
+                "conceptIds": [
+                  "data-request"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "slack-bot-interaction-view",
+          "name": "Slack bot interaction",
+          "description": "Focused view on how the bot interacts in Slack threads, including greetings, reactions, and debug logging.",
+          "conceptIds": [
+            "slack-thread",
+            "slack-message",
+            "slack-bot-interaction",
+            "slack-reaction",
+            "slack-thread-greeting",
+            "slack-thread-text-message",
+            "slack-thread-block-message",
+            "debug-event"
+          ],
+          "relationshipIds": [
+            "rel-slack-thread-has-messages",
+            "rel-slack-message-in-thread",
+            "rel-slack-bot-interaction-uses-slack-thread",
+            "rel-slack-bot-interaction-uses-robot-reaction",
+            "rel-slack-bot-interaction-uses-greeting",
+            "rel-slack-bot-interaction-uses-text-message",
+            "rel-slack-bot-interaction-uses-block-message",
+            "rel-slack-bot-interaction-produces-debug-event",
+            "rel-debug-event-represents-slack-bot-message",
+            "rel-slack-message-may-trigger-reaction"
+          ],
+          "layout": {
+            "groups": [
+              {
+                "id": "thread-zone",
+                "title": "Slack thread",
+                "x": 80,
+                "y": 60,
+                "width": 420,
+                "height": 420,
+                "conceptIds": [
+                  "slack-thread",
+                  "slack-message",
+                  "slack-reaction",
+                  "slack-thread-greeting",
+                  "slack-thread-text-message",
+                  "slack-thread-block-message"
+                ]
+              },
+              {
+                "id": "bot-zone",
+                "title": "Bot interaction + logging",
+                "x": 540,
+                "y": 120,
+                "width": 320,
+                "height": 320,
+                "conceptIds": [
+                  "slack-bot-interaction",
+                  "debug-event"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "data-request-lifecycle",
+          "name": "Data request lifecycle",
+          "description": "How a data request is derived from a Slack thread, iterated on by LLMs, and reviewed before execution.",
+          "conceptIds": [
+            "slack-thread",
+            "slack-user",
+            "data-request",
+            "data-request-iteration",
+            "data-request-review",
+            "request-artifacts",
+            "clarifying-questions",
+            "self-service-instructions",
+            "direct-answer",
+            "llm-review-process",
+            "llm-iteration-process",
+            "llm-model",
+            "llm-context",
+            "prior-artifacts",
+            "data-team-execution"
+          ],
+          "relationshipIds": [
+            "rel-slack-thread-may-contain-data-request",
+            "rel-data-request-from-thread",
+            "rel-data-request-requester",
+            "rel-data-request-artifacts",
+            "rel-artifacts-clarifying-questions",
+            "rel-artifacts-step-by-step",
+            "rel-artifacts-direct-answer",
+            "rel-data-request-reviewed-by-llm",
+            "rel-data-request-iteration",
+            "rel-data-request-iteration-updates-artifacts",
+            "rel-data-request-iteration-uses-slack-thread",
+            "rel-data-request-iteration-uses-prior-artifacts",
+            "rel-data-request-iteration-invokes-llm",
+            "rel-data-request-iteration-refines-data-request",
+            "rel-data-request-iteration-produces-clarifying-questions",
+            "rel-data-request-iteration-produces-step-by-step-instructions",
+            "rel-data-request-iteration-produces-direct-answer",
+            "rel-data-request-iteration-uses-context-templates",
+            "rel-data-request-review-uses-data-request",
+            "rel-data-request-review-uses-clarifying-questions",
+            "rel-data-request-review-uses-step-by-step-instructions",
+            "rel-data-request-review-uses-direct-answer",
+            "rel-data-request-review-enables-data-team-execution",
+            "rel-data-request-review-uses-llm"
+          ],
+          "layout": {
+            "groups": [
+              {
+                "id": "slack-origin-zone",
+                "title": "Slack origin",
+                "x": 60,
+                "y": 80,
+                "width": 260,
+                "height": 260,
+                "conceptIds": [
+                  "slack-thread",
+                  "slack-user"
+                ]
+              },
+              {
+                "id": "request-core-zone",
+                "title": "Data request",
+                "x": 360,
+                "y": 80,
+                "width": 260,
+                "height": 260,
+                "conceptIds": [
+                  "data-request",
+                  "request-artifacts",
+                  "clarifying-questions",
+                  "self-service-instructions",
+                  "direct-answer"
+                ]
+              },
+              {
+                "id": "iteration-zone",
+                "title": "LLM iteration",
+                "x": 60,
+                "y": 380,
+                "width": 360,
+                "height": 260,
+                "conceptIds": [
+                  "data-request-iteration",
+                  "llm-iteration-process",
+                  "llm-model",
+                  "llm-context",
+                  "prior-artifacts"
+                ]
+              },
+              {
+                "id": "review-zone",
+                "title": "Review & execution",
+                "x": 460,
+                "y": 380,
+                "width": 360,
+                "height": 260,
+                "conceptIds": [
+                  "data-request-review",
+                  "llm-review-process",
+                  "data-team-execution"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "thread-status-and-storage",
+          "name": "Thread status and storage",
+          "description": "How thread status is maintained and stored, and how artifacts and status attach to threads.",
+          "conceptIds": [
+            "slack-thread",
+            "thread-status",
+            "request-artifacts",
+            "data-request-status",
+            "worker-service",
+            "threads-collection"
+          ],
+          "relationshipIds": [
+            "rel-thread-status-belongs-to-thread",
+            "rel-thread-status-updated-by-worker",
+            "rel-thread-status-stored-in-threads-collection",
+            "rel-thread-has-artifacts",
+            "rel-thread-has-status"
+          ],
+          "layout": {
+            "groups": [
+              {
+                "id": "slack-thread-zone",
+                "title": "Slack thread",
+                "x": 80,
+                "y": 120,
+                "width": 260,
+                "height": 260,
+                "conceptIds": [
+                  "slack-thread",
+                  "thread-status",
+                  "request-artifacts",
+                  "data-request-status"
+                ]
+              },
+              {
+                "id": "backend-zone",
+                "title": "Backend worker & storage",
+                "x": 420,
+                "y": 80,
+                "width": 360,
+                "height": 320,
+                "conceptIds": [
+                  "worker-service",
+                  "threads-collection"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "slack-integration-and-security",
+          "name": "Slack integration and security",
+          "description": "How Slack events and tasks relate to channels and threads, and how incoming Slack requests are verified for security.",
+          "conceptIds": [
+            "slack-user",
+            "slack-channel",
+            "slack-thread",
+            "slack-event-envelope",
+            "event-envelope",
+            "task-payload",
+            "test-execution-task-payload",
+            "prompt-template",
+            "outgoing-slack-message-debug-event",
+            "bot-message",
+            "debug-event",
+            "slack-reaction",
+            "slack-security-verification",
+            "slack-request-signature",
+            "slack-request-timestamp",
+            "slack-raw-request-body",
+            "slack-signing-secret",
+            "slack-request-replay-attack",
+            "slack-request-tampering",
+            "trusted-slack-request"
+          ],
+          "relationshipIds": [
+            "rel-slack-user-sends-event-envelope",
+            "rel-slack-user-triggers-task-payload",
+            "rel-slack-user-participates-in-channel",
+            "rel-slack-user-initiates-test-execution",
+            "rel-slack-user-creates-prompt-template",
+            "rel-slack-user-receives-bot-messages",
+            "rel-slack-channel-has-events",
+            "rel-slack-event-occurs-in-channel",
+            "rel-slack-channel-has-tasks",
+            "rel-task-refers-to-channel",
+            "rel-slack-channel-has-threads",
+            "rel-slack-thread-lives-in-channel",
+            "rel-slack-thread-channel",
+            "rel-slack-channel-receives-bot-messages",
+            "rel-bot-message-posted-in-channel",
+            "rel-slack-channel-has-debug-events",
+            "rel-debug-event-refers-to-channel",
+            "rel-slack-channel-enables-bot-reactions",
+            "rel-slack-reaction-occurs-in-channel",
+            "rel-slack-thread-used-by-task-payload",
+            "rel-slack-thread-used-by-event-envelope",
+            "rel-slack-thread-has-debug-events",
+            "rel-slack-message-recorded-as-debug-event",
+            "rel-slack-verification-uses-signature",
+            "rel-slack-verification-uses-timestamp",
+            "rel-slack-verification-uses-raw-body",
+            "rel-slack-verification-uses-signing-secret",
+            "rel-slack-verification-prevents-replay",
+            "rel-slack-verification-prevents-tampering",
+            "rel-slack-verification-enables-trust"
+          ],
+          "layout": {
+            "groups": [
+              {
+                "id": "slack-surface-zone",
+                "title": "Slack surface",
+                "x": 60,
+                "y": 60,
+                "width": 360,
+                "height": 520,
+                "conceptIds": [
+                  "slack-user",
+                  "slack-channel",
+                  "slack-thread",
+                  "slack-reaction",
+                  "bot-message"
+                ]
+              },
+              {
+                "id": "integration-zone",
+                "title": "Events, tasks, and debug",
+                "x": 460,
+                "y": 60,
+                "width": 360,
+                "height": 320,
+                "conceptIds": [
+                  "slack-event-envelope",
+                  "event-envelope",
+                  "task-payload",
+                  "test-execution-task-payload",
+                  "prompt-template",
+                  "outgoing-slack-message-debug-event",
+                  "debug-event"
+                ]
+              },
+              {
+                "id": "security-zone",
+                "title": "Slack security verification",
+                "x": 460,
+                "y": 400,
+                "width": 360,
+                "height": 220,
+                "conceptIds": [
+                  "slack-security-verification",
+                  "slack-request-signature",
+                  "slack-request-timestamp",
+                  "slack-raw-request-body",
+                  "slack-signing-secret",
+                  "slack-request-replay-attack",
+                  "slack-request-tampering",
+                  "trusted-slack-request"
+                ]
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

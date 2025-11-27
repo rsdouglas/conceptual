@@ -10,6 +10,7 @@ import {
   ConceptLifecycle,
   ProjectEntry,
   ProjectRegistry,
+  ModelView,
 } from '../types/model.js';
 import { extractSnippets } from './extractSnippets.js';
 import {
@@ -174,6 +175,194 @@ async function enrichProjectModels(
   };
 }
 
+async function generateViewsForProject(
+  llmEnv: LLMEnv,
+  project: ConceptProject,
+  verbose?: boolean,
+): Promise<ConceptProject> {
+  const modelsWithViews: ConceptModel[] = [];
+
+  for (const model of project.models) {
+    console.log(`🧭 Designing views for model: ${model.title}`);
+
+    // Build a "view design" prompt from the *enriched* model
+    const prompt = buildViewDesignPrompt(project, model);
+
+    if (verbose) {
+      console.log('\n📝 View Design Prompt:');
+      console.log('─'.repeat(50));
+      console.log(prompt);
+      console.log('─'.repeat(50));
+    }
+
+    try {
+      const result = await callLLM<{ views: ModelView[] }>(
+        llmEnv,
+        [
+          { role: 'system', content: 'You are an expert at designing Dubberly-style diagrams and views.' },
+          { role: 'user', content: prompt },
+        ],
+        { responseFormat: 'json_object' },
+      );
+
+      modelsWithViews.push({
+        ...model,
+        views: result.views ?? [],
+      });
+
+      console.log(`   ✅ Generated ${result.views?.length ?? 0} views`);
+    } catch (error) {
+      console.error(`   ❌ Failed to generate views for model ${model.title}:`, error);
+      modelsWithViews.push({
+        ...model,
+        views: [],
+      });
+    }
+  }
+
+  return {
+    ...project,
+    models: modelsWithViews,
+  };
+}
+function buildViewDesignPrompt(
+  project: ConceptProject,
+  model: ConceptModel,
+): string {
+  const conceptsText = model.concepts.map(c => ({
+    id: c.id,
+    label: c.label,
+    category: c.category,
+    description: c.description,
+  }));
+
+  const relationshipsText = model.relationships.map(r => ({
+    id: r.id,
+    from: r.from,
+    to: r.to,
+    phrase: r.phrase,
+    category: r.category,
+  }));
+
+  return `
+We have an enriched Dubberly-style concept model in project "${project.name}".
+
+Model: "${model.title}"
+Description: ${model.description ?? '(none)'}
+
+Concepts:
+${JSON.stringify(conceptsText, null, 2)}
+
+Relationships:
+${JSON.stringify(relationshipsText, null, 2)}
+
+Your job:
+- Design a small set of **views** (3–7) that help a human understand this model.
+- Think of each view as a **single story** or **single question** this diagram answers.
+- Examples:
+  - "System overview"
+  - "Data request lifecycle"
+  - "Artifacts and their structure"
+  - "LLM / implementation plumbing"
+  - "Data store and persistence"
+
+### Very important constraints
+
+1. **Small views, not hairballs**
+   - Each view MUST have:
+     - **Between 4 and 8 concepts** (inclusive).
+     - **Between 4 and 10 relationships** (inclusive).
+   - If the underlying model has more relevant concepts/relationships, split them across multiple views.
+   - Do NOT make a view that tries to show every concept or every relationship.
+
+2. **Only include primary relationships**
+   - Treat relationships as either **primary** (story-critical) or **secondary** (nice but non-essential).
+   - In each view, include only the **primary** relationships that are necessary to tell *that* view’s story.
+   - Secondary relationships should be omitted from that view (they can appear in a different, more detailed view).
+
+3. **One narrative per view**
+   - Prefer views that answer things like:
+     - "What is the lifecycle of a data request from start to finish?"
+     - "What are the main artifacts and how are they related?"
+     - "Which components participate in LLM processing?"
+   - Avoid mixing:
+     - high-level lifecycle + low-level implementation details in the same view
+     - too many different phases/domains in one diagram
+
+4. **Use groups as swimlanes / zones**
+   - For each view, create **2–5 groups** that act as swimlanes or zones (e.g. "Slack", "Data request", "LLM iteration", "Review & execution", "Storage").
+   - Each concept in the view should belong to exactly one group.
+   - Groups should support a left-to-right or top-to-bottom reading order (e.g. origin → core object → processing → outcome).
+
+5. **Directional flow**
+   - Prefer relationships that mostly flow **left→right** or **top→bottom** across groups.
+   - Avoid views where many arrows go backwards or criss-cross multiple groups.
+   - If a relationship would create confusing crossing arrows, treat it as secondary and omit it from that view.
+
+6. **No new concepts or relationships**
+   - You MUST NOT invent any new concept IDs or relationship IDs.
+   - Every \`conceptId\` and \`relationshipId\` in the views MUST come from the lists above.
+
+### View kinds
+
+Classify each view with a simple \`kind\` to hint at how it should be rendered:
+
+- "overview"      – high-level system or subsystem overview
+- "lifecycle"     – phases or stages over time
+- "structure"     – how parts/artefacts of a core thing relate
+- "implementation"– technical / LLM / plumbing details
+- "datastore"     – persistence / storage-centric view
+- "other"         – anything else
+
+### Output format
+
+Return JSON shaped like:
+
+{
+  "views": [
+    {
+      "id": "data-request-lifecycle",
+      "name": "Data request lifecycle",
+      "kind": "lifecycle",
+      "description": "High-level lifecycle of a data request from Slack through LLM iteration and review to execution.",
+      "conceptIds": ["...", "..."],          // 4–8 items
+      "relationshipIds": ["...", "..."],     // 4–10 items
+      "layout": {
+        "groups": [
+          {
+            "id": "slack-origin",
+            "title": "Slack origin",
+            "x": 60,
+            "y": 80,
+            "width": 260,
+            "height": 260,
+            "conceptIds": ["slack-thread", "slack-user"]
+          },
+          {
+            "id": "request-core",
+            "title": "Data request",
+            "x": 360,
+            "y": 80,
+            "width": 260,
+            "height": 260,
+            "conceptIds": ["data-request"]
+          }
+          // 0–3 more groups...
+        ]
+      }
+    }
+  ]
+}
+
+Notes on layout:
+- You may reuse the same coordinates pattern across views; positions do not need to be perfect.
+- Focus on assigning concepts to sensible groups; the renderer will arrange nodes inside each group.
+
+Only return JSON.
+`.trim();
+}
+
+
 export async function publishToViewer(project: ConceptProject, repoRoot: string) {
   try {
     // Resolve viewer directory relative to this file's location in dist/core or src/core
@@ -275,9 +464,14 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   console.log(`   Models: ${discoveredProject.models.map(m => m.title).join(', ')}`);
 
   console.log(`💎 Enriching concepts...`);
-  const finalProject = await enrichProjectModels(llmEnv, repoRoot, discoveredProject, scan.files, opts.verbose, opts.maxModels);
+  const finalProjectWithoutViews = await enrichProjectModels(llmEnv, repoRoot, discoveredProject, scan.files, opts.verbose, opts.maxModels);
 
   console.log(`✅ Enrichment complete.`);
+
+  console.log(`🧭 Generating model views...`);
+  const finalProject = await generateViewsForProject(llmEnv, finalProjectWithoutViews, opts.verbose);
+
+  console.log(`✅ View generation complete.`);
 
   // Write the final project file
   if (opts.outDir) {

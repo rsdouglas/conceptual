@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ConceptProject, ProjectRegistry, ConceptModel } from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
-import { Layers, ChevronRight, Database, Box, Zap, Activity, Code, LayoutGrid, GitBranch } from 'lucide-react';
+import { DiagramView } from './components/DiagramView';
+import { Layers, ChevronRight, Database, Box, Zap, Activity, Code, LayoutGrid, GitBranch, Network } from 'lucide-react';
 
 function App() {
   const [registry, setRegistry] = useState<ProjectRegistry | null>(null);
@@ -11,6 +12,7 @@ function App() {
   // Navigation State
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
+  const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ function App() {
         // Reset selection on project change
         setSelectedModelId(null);
         setSelectedConceptId(null);
+        setSelectedViewId(null);
       })
       .catch(err => {
         console.error(err);
@@ -64,6 +67,7 @@ function App() {
   // Derived state
   const selectedModel = project.models?.find(m => m.id === selectedModelId);
   const selectedConcept = selectedModel?.concepts?.find(c => c.id === selectedConceptId);
+  const selectedView = selectedModel?.views?.find(v => v.id === selectedViewId);
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
@@ -108,16 +112,42 @@ function App() {
           </button>
 
           {project.models.map(model => (
-            <button
-              key={model.id}
-              onClick={() => { setSelectedModelId(model.id); setSelectedConceptId(null); }}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
-                ${selectedModelId === model.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
-              `}
-            >
-              <Box className="w-4 h-4" />
-              <span className="truncate">{model.title}</span>
-            </button>
+            <div key={model.id}>
+              <button
+                onClick={() => {
+                  setSelectedModelId(model.id);
+                  setSelectedConceptId(null);
+                  setSelectedViewId(null);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
+                  ${selectedModelId === model.id && !selectedViewId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+                `}
+              >
+                <Box className="w-4 h-4" />
+                <span className="truncate">{model.title}</span>
+              </button>
+
+              {/* Views submenu */}
+              {selectedModelId === model.id && model.views && model.views.length > 0 && (
+                <div className="ml-4 mt-1 space-y-0.5 pb-2">
+                  {model.views.map(view => (
+                    <button
+                      key={view.id}
+                      onClick={() => {
+                        setSelectedViewId(view.id);
+                        setSelectedConceptId(null);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
+                        ${selectedViewId === view.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
+                      `}
+                    >
+                      <Network className="w-3.5 h-3.5" />
+                      <span className="truncate">{view.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </aside>
@@ -126,6 +156,8 @@ function App() {
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
         {selectedConcept && selectedModel ? (
           <ConceptDetailSpec concept={selectedConcept} model={selectedModel} onBack={() => setSelectedConceptId(null)} />
+        ) : selectedView && selectedModel ? (
+          <DiagramView view={selectedView} model={selectedModel} onBack={() => setSelectedViewId(null)} />
         ) : selectedModel ? (
           <ModelView model={selectedModel} onSelectConcept={setSelectedConceptId} />
         ) : (
