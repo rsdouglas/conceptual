@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+NEVER use `git commit` unless explicitly asked to do so.

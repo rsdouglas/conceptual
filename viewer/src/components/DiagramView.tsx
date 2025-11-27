@@ -122,7 +122,7 @@ export function DiagramView({ view, model, onBack }: Props) {
             simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink(links).id(d => (d as Node).id).distance(350))
                 .force('charge', d3.forceManyBody().strength(-800))
-                .force('center', d3.forceCenter(width / 2, height / 2).strength(0.1))
+                .force('center', d3.forceCenter(width / 2, height / 2).strength(0.3))
                 .force('collision', d3.forceCollide().radius(55));
         } catch (error) {
             console.error('Failed to initialize d3-force simulation:', error);
@@ -197,6 +197,13 @@ export function DiagramView({ view, model, onBack }: Props) {
 
         // Update positions on simulation tick
         simulation.on('tick', () => {
+            // Clamp node positions to container bounds
+            const padding = 60; // Account for node radius + some margin
+            nodes.forEach(d => {
+                d.x = Math.max(padding, Math.min(width - padding, d.x!));
+                d.y = Math.max(padding, Math.min(height - padding, d.y!));
+            });
+
             link
                 .attr('x1', d => d.source.x!)
                 .attr('y1', d => d.source.y!)
