@@ -1,8 +1,30 @@
-import { useEffect, useState } from 'react';
-import type { ConceptProject, ProjectRegistry, ConceptModel } from '../../conceptual/src/types/model';
+import {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  Activity,
+  BookOpen,
+  Box,
+  ChevronRight,
+  Code,
+  Database,
+  GitBranch,
+  Layers,
+  LayoutGrid,
+  Network,
+  Zap,
+} from 'lucide-react';
+
+import type {
+  ConceptModel,
+  ConceptProject,
+  ProjectRegistry,
+  StoryView,
+} from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
 import { DiagramView } from './components/DiagramView';
-import { Layers, ChevronRight, Database, Box, Zap, Activity, Code, LayoutGrid, GitBranch, Network } from 'lucide-react';
 
 function App() {
   const [registry, setRegistry] = useState<ProjectRegistry | null>(null);
@@ -13,6 +35,7 @@ function App() {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
   const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
+  const [selectedStoryViewId, setSelectedStoryViewId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +75,7 @@ function App() {
         setSelectedModelId(null);
         setSelectedConceptId(null);
         setSelectedViewId(null);
+        setSelectedStoryViewId(null);
       })
       .catch(err => {
         console.error(err);
@@ -68,6 +92,7 @@ function App() {
   const selectedModel = project.models?.find(m => m.id === selectedModelId);
   const selectedConcept = selectedModel?.concepts?.find(c => c.id === selectedConceptId);
   const selectedView = selectedModel?.views?.find(v => v.id === selectedViewId);
+  const selectedStoryView = selectedModel?.storyViews?.find(s => s.id === selectedStoryViewId);
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
@@ -118,33 +143,67 @@ function App() {
                   setSelectedModelId(model.id);
                   setSelectedConceptId(null);
                   setSelectedViewId(null);
+                  setSelectedStoryViewId(null);
                 }}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
-                  ${selectedModelId === model.id && !selectedViewId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+                  ${selectedModelId === model.id && !selectedViewId && !selectedStoryViewId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
                 `}
               >
                 <Box className="w-4 h-4" />
                 <span className="truncate">{model.title}</span>
               </button>
 
-              {/* Views submenu */}
+              {/* Model Views section */}
               {selectedModelId === model.id && model.views && model.views.length > 0 && (
-                <div className="ml-4 mt-1 space-y-0.5 pb-2">
-                  {model.views.map(view => (
-                    <button
-                      key={view.id}
-                      onClick={() => {
-                        setSelectedViewId(view.id);
-                        setSelectedConceptId(null);
-                      }}
-                      className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
-                        ${selectedViewId === view.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
-                      `}
-                    >
-                      <Network className="w-3.5 h-3.5" />
-                      <span className="truncate">{view.name}</span>
-                    </button>
-                  ))}
+                <div className="ml-4 mt-1">
+                  <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Model Views
+                  </div>
+                  <div className="space-y-0.5 pb-2">
+                    {model.views.map(view => (
+                      <button
+                        key={view.id}
+                        onClick={() => {
+                          setSelectedViewId(view.id);
+                          setSelectedConceptId(null);
+                          setSelectedStoryViewId(null);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
+                          ${selectedViewId === view.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
+                        `}
+                      >
+                        <Network className="w-3.5 h-3.5" />
+                        <span className="truncate">{view.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Story Views section */}
+              {selectedModelId === model.id && model.storyViews && model.storyViews.length > 0 && (
+                <div className="ml-4 mt-1">
+                  <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Story Views
+                  </div>
+                  <div className="space-y-0.5 pb-2">
+                    {model.storyViews.map(storyView => (
+                      <button
+                        key={storyView.id}
+                        onClick={() => {
+                          setSelectedStoryViewId(storyView.id);
+                          setSelectedConceptId(null);
+                          setSelectedViewId(null);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
+                          ${selectedStoryViewId === storyView.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
+                        `}
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span className="truncate">{storyView.name}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -153,9 +212,11 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 overflow-y-auto">
         {selectedConcept && selectedModel ? (
           <ConceptDetailSpec concept={selectedConcept} model={selectedModel} onBack={() => setSelectedConceptId(null)} />
+        ) : selectedStoryView && selectedModel ? (
+          <StoryViewComponent storyView={selectedStoryView} model={selectedModel} onBack={() => setSelectedStoryViewId(null)} />
         ) : selectedView && selectedModel ? (
           <DiagramView view={selectedView} model={selectedModel} onBack={() => setSelectedViewId(null)} />
         ) : selectedModel ? (
@@ -268,6 +329,76 @@ function getCategoryIcon(category: string) {
     case 'event': return <Activity className="w-4 h-4" />;
     default: return <Code className="w-4 h-4" />;
   }
+}
+
+function StoryViewComponent({ storyView, model, onBack }: { storyView: StoryView, model: ConceptModel, onBack: () => void }) {
+  return (
+    <div className="p-8 max-w-4xl mx-auto w-full min-h-full">
+      <div className="mb-8">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 mb-6"
+        >
+          <ChevronRight className="w-4 h-4 rotate-180" />
+          Back to Model
+        </button>
+
+        <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
+          <BookOpen className="w-4 h-4" />
+          <span>Story View</span>
+        </div>
+
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">{storyView.name}</h1>
+        <p className="text-slate-600 mb-4">{storyView.description}</p>
+
+        {storyView.tags && storyView.tags.length > 0 && (
+          <div className="flex gap-2 mb-8">
+            {storyView.tags.map(tag => (
+              <span key={tag} className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-full">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Vertical Timeline */}
+      <div className="relative">
+        {/* Timeline line */}
+        <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-slate-200"></div>
+
+        <div className="space-y-8">
+          {storyView.steps.map((step) => (
+            <div key={step.id} className="relative flex gap-6">
+              {/* Timeline dot */}
+              <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-bold border-4 border-white shadow-sm z-10">
+                {step.index + 1}
+              </div>
+
+              {/* Step content */}
+              <div className="flex-1 pb-8">
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">{step.title}</h3>
+                <p className="text-slate-700 leading-relaxed mb-4">{step.narrative}</p>
+
+                {/* Concepts */}
+                <div className="flex flex-wrap gap-2">
+                  {step.conceptIds.map(conceptId => {
+                    const concept = model.concepts.find(c => c.id === conceptId);
+                    return concept ? (
+                      <span key={conceptId} className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded-md">
+                        {concept.label}
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default App;

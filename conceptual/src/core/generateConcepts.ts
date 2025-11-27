@@ -3,14 +3,15 @@ import path from 'node:path';
 
 import {
   Concept,
+  ConceptLifecycle,
   ConceptModel,
   ConceptProject,
-  Relationship,
   ModelRule,
-  ConceptLifecycle,
+  ModelView,
   ProjectEntry,
   ProjectRegistry,
-  ModelView,
+  Relationship,
+  StoryView,
 } from '../types/model.js';
 import { extractSnippets } from './extractSnippets.js';
 import {
@@ -225,6 +226,57 @@ async function generateViewsForProject(
     models: modelsWithViews,
   };
 }
+
+async function generateStoryViewsForProject(
+  llmEnv: LLMEnv,
+  project: ConceptProject,
+  verbose?: boolean,
+): Promise<ConceptProject> {
+  const modelsWithStoryViews: ConceptModel[] = [];
+
+  for (const model of project.models) {
+    console.log(`📖 Designing story views for model: ${model.title}`);
+
+    // Build a "story view design" prompt from the *enriched* model
+    const prompt = buildStoryViewDesignPrompt(project, model);
+
+    if (verbose) {
+      console.log('\n📝 Story View Design Prompt:');
+      console.log('─'.repeat(50));
+      console.log(prompt);
+      console.log('─'.repeat(50));
+    }
+
+    try {
+      const result = await callLLM<{ storyViews: StoryView[] }>(
+        llmEnv,
+        [
+          { role: 'system', content: 'You are an expert at designing narrative storyboards and scenario-based views for concept models.' },
+          { role: 'user', content: prompt },
+        ],
+        { responseFormat: 'json_object' },
+      );
+
+      modelsWithStoryViews.push({
+        ...model,
+        storyViews: result.storyViews ?? [],
+      });
+
+      console.log(`   ✅ Generated ${result.storyViews?.length ?? 0} story views`);
+    } catch (error) {
+      console.error(`   ❌ Failed to generate story views for model ${model.title}:`, error);
+      modelsWithStoryViews.push({
+        ...model,
+        storyViews: [],
+      });
+    }
+  }
+
+  return {
+    ...project,
+    models: modelsWithStoryViews,
+  };
+}
 function buildViewDesignPrompt(
   project: ConceptProject,
   model: ConceptModel,
@@ -327,38 +379,144 @@ Return JSON shaped like:
       "description": "High-level lifecycle of a data request from Slack through LLM iteration and review to execution.",
       "conceptIds": ["...", "..."],          // 4–8 items
       "relationshipIds": ["...", "..."],     // 4–10 items
-      "layout": {
-        "groups": [
-          {
-            "id": "slack-origin",
-            "title": "Slack origin",
-            "x": 60,
-            "y": 80,
-            "width": 260,
-            "height": 260,
-            "conceptIds": ["slack-thread", "slack-user"]
-          },
-          {
-            "id": "request-core",
-            "title": "Data request",
-            "x": 360,
-            "y": 80,
-            "width": 260,
-            "height": 260,
-            "conceptIds": ["data-request"]
-          }
-          // 0–3 more groups...
-        ]
-      }
     }
   ]
 }
 
-Notes on layout:
-- You may reuse the same coordinates pattern across views; positions do not need to be perfect.
-- Focus on assigning concepts to sensible groups; the renderer will arrange nodes inside each group.
-
 Only return JSON.
+`.trim();
+}
+
+function buildStoryViewDesignPrompt(
+  project: ConceptProject,
+  model: ConceptModel,
+): string {
+  const conceptsText = model.concepts.map(c => ({
+    id: c.id,
+    label: c.label,
+    category: c.category,
+    description: c.description,
+  }));
+
+  const relationshipsText = model.relationships.map(r => ({
+    id: r.id,
+    from: r.from,
+    to: r.to,
+    phrase: r.phrase,
+    category: r.category,
+  }));
+
+  return `
+We have a Dubberly-style concept model in project "${project.name}".
+
+Your job is to design **story views** for the model "${model.title}".  
+A story view is a *temporal narrative*—a sequence of steps that explains how concepts interact over time.
+
+---
+
+# Model Context
+
+Model description: ${model.description ?? '(none)'}
+
+Concepts (valid conceptIds):
+${JSON.stringify(conceptsText, null, 2)}
+
+Relationships (valid relationshipIds):
+${JSON.stringify(relationshipsText, null, 2)}
+
+---
+
+# Your Task
+
+Generate **2–5 high-quality story views**.
+
+Each story view is a coherent scenario, such as:
+
+- A typical user flow
+- An admin configuration flow
+- A system-level internal process
+- An error or recovery case
+- A cross-system integration sequence
+
+## Requirements for Story Views
+
+### 1. Temporal narrative
+Each story must be a sequence of **3–7 steps** that unfold over time.
+
+### 2. Step structure
+Each step must include:
+
+- **title**  
+- **narrative** (1–3 sentences)
+- **conceptIds** (2–6 concepts used in this moment)
+- **relationshipIds** (1–5 relationships driving this moment)
+- Optional: **primaryConceptIds**, **primaryRelationshipIds**
+
+### 4. No new IDs
+- Use only conceptIds from the Concepts list.
+- Use only relationshipIds from the Relationships list.
+- Do not invent concept names or IDs.
+
+### 5. Clarity and realism
+Stories should:
+- Start simple
+- Build complexity
+- End with a clear outcome
+- Reflect plausible real-world flows
+
+---
+
+# Story Type Classification
+
+Each story requires a \`kind\`:
+
+- "user_flow"
+- "admin_flow"
+- "system_flow"
+- "error_flow"
+- "integration_flow"
+- "other"
+
+Pick the most appropriate one.
+
+---
+
+# Output Format
+
+Return **ONLY JSON** in the following structure:
+
+\`\`\`json
+{
+  "storyViews": [
+    {
+      "id": "kebab-case-id",
+      "name": "Human readable story name",
+      "kind": "user_flow",
+      "description": "1–3 sentence overview.",
+      "tags": ["optional", "tags"],
+      "focusConceptId": "optional-concept-id",
+      "steps": [
+        {
+          "id": "kebab-step-id",
+          "index": 0,
+          "title": "Step title",
+          "narrative": "1–3 sentence explanation.",
+          "conceptIds": ["concept-a", "concept-b"],
+          "relationshipIds": ["rel-1"],
+          "primaryConceptIds": ["optional"],
+          "primaryRelationshipIds": ["optional"]
+        }
+        // more steps...
+      ]
+    }
+    // more storyViews...
+  ]
+}
+\`\`\`
+
+---
+
+ONLY return JSON. No commentary. 
 `.trim();
 }
 
@@ -469,9 +627,14 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   console.log(`✅ Enrichment complete.`);
 
   console.log(`🧭 Generating model views...`);
-  const finalProject = await generateViewsForProject(llmEnv, finalProjectWithoutViews, opts.verbose);
+  const finalProjectWithViews = await generateViewsForProject(llmEnv, finalProjectWithoutViews, opts.verbose);
 
-  console.log(`✅ View generation complete.`);
+  console.log(`✅ Model view generation complete.`);
+
+  console.log(`📖 Generating story views...`);
+  const finalProject = await generateStoryViewsForProject(llmEnv, finalProjectWithViews, opts.verbose);
+
+  console.log(`✅ Story view generation complete.`);
 
   // Write the final project file
   if (opts.outDir) {

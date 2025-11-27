@@ -84,7 +84,7 @@ export interface ProjectRegistry {
  * TypeScript types for representing a Dubberly-style concept model.
  *
  * This version includes:
- * - Concepts, relationships, views, layout (as before).
+ * - Concepts, relationships, views
  * - Rules on the model.
  * - NEW: Explicit lifecycles per concept.
  * - NEW: Concept aliases (synonyms).
@@ -143,6 +143,13 @@ export interface ConceptModel {
    * or perspectives (e.g. "Slack bot flow", "Admin UI").
    */
   views?: ModelView[];
+
+  /**
+   * Narrative, path-based perspectives on this model.
+   * Each StoryView breaks the model into a sequence of steps, where
+   * each step highlights a small subgraph plus explanatory text.
+   */
+  storyViews?: StoryView[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -349,41 +356,115 @@ export interface ModelView {
    * something is true only within this perspective (or when explaining this view).
    */
   rules?: ModelRule[];
-
-  layout?: DiagramLayout;
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Layout (Diagram Geometry, Optional)                                       */
+/*  Story Views (Scenarios / Narratives Over the Model)                       */
 /* -------------------------------------------------------------------------- */
 
-export interface DiagramLayout {
-  nodes?: DiagramNodeLayout[];
-  edges?: DiagramEdgeLayout[];
-  groups?: DiagramGroupLayout[];
+export type StoryViewId = string;
+export type StoryStepId = string;
+
+/**
+ * A StoryView is a narrative, path-based perspective on the model.
+ *
+ * Instead of showing the whole graph at once, it breaks things into
+ * a sequence of "steps" or "panels". Each step highlights a small
+ * subgraph (concepts + relationships) and adds narrative text.
+ *
+ * Examples:
+ * - "Simple Slack data request"
+ * - "Escalated request with re-classification"
+ * - "Admin updates evaluation config"
+ *
+ * The same Concept can appear in many steps. Renderers are free to
+ * duplicate nodes per step; this is *not* a single global layout.
+ */
+export interface StoryView {
+  id: StoryViewId;
+  name: string;
+  description?: string;
+
+  /**
+   * Optional high-level tags for searching / grouping stories.
+   * Example: ["happy_path", "slack", "admin", "error"]
+   */
+  tags?: string[];
+
+  /**
+   * Optional ID of the main concept this story is "about".
+   * Example: the Data Request concept, or Slack Thread.
+   */
+  focusConceptId?: ConceptId;
+
+  /**
+   * Ordered list of steps in this story.
+   *
+   * Each step is typically rendered as a frame:
+   * - a small diagram (subset of concepts/relationships)
+   * - with explanatory text beneath or alongside it.
+   */
+  steps: StoryStep[];
 }
 
-export interface DiagramNodeLayout {
-  conceptId: ConceptId;
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-  fixed?: boolean;
-}
+/**
+ * One "panel" or "frame" in a story.
+ *
+ * Each step:
+ * - references model concepts/relationships
+ * - can highlight a subset as primary/emphasised
+ * - has narrative text that explains what's happening
+ */
+export interface StoryStep {
+  id: StoryStepId;
 
-export interface DiagramEdgeLayout {
-  relationshipId: RelationshipId;
-  bendPoints?: Array<{ x: number; y: number }>;
-  labelPosition?: { x: number; y: number };
-}
+  /** 0-based index or explicit order. */
+  index: number;
 
-export interface DiagramGroupLayout {
-  id: string;
-  title?: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  conceptIds?: ConceptId[];
+  /**
+   * Short title for this step.
+   * Example: "User posts a question in #data-help"
+   */
+  title: string;
+
+  /**
+   * Optional longer narrative for this step.
+   * Example:
+   * "A Slack user posts a message in a public channel. The bot is listening
+   *  to this channel and will consider messages as candidate data requests."
+   */
+  narrative?: string;
+
+  /**
+   * Concepts that participate in this step.
+   * These must be valid ConceptIds from the parent ConceptModel.
+   *
+   * Renderers may show only these nodes for this frame, even if the
+   * full model has many more.
+   */
+  conceptIds: ConceptId[];
+
+  /**
+   * Relationships that are relevant in this step.
+   * These must be valid RelationshipIds from the parent ConceptModel.
+   */
+  relationshipIds: RelationshipId[];
+
+  /**
+   * Optional subset of concepts to visually emphasise in this step.
+   * Example: the "Data Request" concept when it is first created.
+   */
+  primaryConceptIds?: ConceptId[];
+
+  /**
+   * Optional subset of relationships to emphasise.
+   * Example: the specific arrow that represents "classified as".
+   */
+  primaryRelationshipIds?: RelationshipId[];
+
+  /**
+   * Optional notes for maintainers / modelers (not usually rendered in UI).
+   */
+  notes?: string;
+
 }

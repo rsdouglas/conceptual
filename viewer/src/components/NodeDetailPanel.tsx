@@ -22,7 +22,7 @@ interface NodeDetailPanelProps {
     onClose: () => void;
 }
 
-export function NodeDetailPanel({ selectedNode, nodes, links, model, view, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ selectedNode, nodes, links, model, view: _view, onClose }: NodeDetailPanelProps) {
     if (!selectedNode) return null;
 
     // Get the full concept from the model
