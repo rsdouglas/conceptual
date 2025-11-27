@@ -1,214 +1,241 @@
 import { useEffect, useState } from 'react';
-import type { ConceptModel, ProjectRegistry } from '../../conceptual/src/types/model';
-import { ProjectOverviewHero } from './components/ProjectOverviewHero';
-import { DomainMap } from './components/DomainMap';
+import type { ConceptProject, ProjectRegistry, ConceptModel } from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
-import { Layers } from 'lucide-react';
-
-import { StructureView } from './components/StructureView';
+import { Layers, ChevronRight, Database, Box, Zap, Activity, Code, LayoutGrid, GitBranch } from 'lucide-react';
 
 function App() {
   const [registry, setRegistry] = useState<ProjectRegistry | null>(null);
-  const [currentProject, setCurrentProject] = useState<string | null>(null);
-  const [model, setModel] = useState<ConceptModel | null>(null);
-  const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'overview' | 'map' | 'structure'>('overview');
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [project, setProject] = useState<ConceptProject | null>(null);
+
+  // Navigation State
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
-  // Sync state to URL (only after initial load to avoid overwriting URL params)
-  useEffect(() => {
-    if (!initialLoadComplete) return;
-
-    const params = new URLSearchParams();
-    if (currentProject) params.set('project', currentProject);
-    if (viewMode !== 'overview') params.set('view', viewMode);
-    if (selectedConcept) params.set('concept', selectedConcept);
-
-    const newUrl = params.toString() ? `?${params.toString()}` : '/';
-    window.history.replaceState({}, '', newUrl);
-  }, [currentProject, viewMode, selectedConcept, initialLoadComplete]);
-
-  // Load registry on mount and initialize from URL
+  // Load registry
   useEffect(() => {
     fetch('/models/registry.json')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load project registry');
-        return res.json();
-      })
+      .then(res => res.json())
       .then((data: ProjectRegistry) => {
         setRegistry(data);
-
-        // Read from URL params
-        const params = new URLSearchParams(window.location.search);
-        const urlProject = params.get('project');
-        const urlView = params.get('view') as 'overview' | 'map' | 'structure' | null;
-        const urlConcept = params.get('concept');
-
-        // Set initial project from URL or default to first
-        if (urlProject && data.projects.some(p => p.id === urlProject)) {
-          setCurrentProject(urlProject);
-        } else if (data.projects.length > 0) {
-          setCurrentProject(data.projects[0].id);
+        if (data.projects.length > 0) {
+          setCurrentProjectId(data.projects[0].id);
         } else {
           setLoading(false);
         }
-
-        // Set initial view from URL
-        if (urlView === 'map' || urlView === 'structure') {
-          setViewMode(urlView);
-        }
-
-        // Set initial concept from URL (will be applied after model loads)
-        if (urlConcept) {
-          setSelectedConcept(urlConcept);
-        }
-
-        // Mark initial load as complete
-        setInitialLoadComplete(true);
       })
       .catch(err => {
         console.error(err);
-        setError('Could not load projects. Have you analyzed any repos yet?');
+        setError('Failed to load project registry.');
         setLoading(false);
       });
   }, []);
 
-  // Load model when project changes
+  // Load project
   useEffect(() => {
-    if (!currentProject || !registry) return;
-
-    const project = registry.projects.find(p => p.id === currentProject);
-    if (!project) return;
+    if (!currentProjectId || !registry) return;
+    const entry = registry.projects.find(p => p.id === currentProjectId);
+    if (!entry) return;
 
     setLoading(true);
-    fetch(`/${project.path}`)
-      .then(res => {
-        if (!res.ok) throw new Error(`Failed to load model for ${project.name}`);
-        return res.json();
-      })
-      .then((data: ConceptModel) => {
-        setModel(data);
-        // Don't reset selectedConcept here - let URL params control it
+    fetch(`/${entry.path}`)
+      .then(res => res.json())
+      .then((data: ConceptProject) => {
+        setProject(data);
         setLoading(false);
+        // Reset selection on project change
+        setSelectedModelId(null);
+        setSelectedConceptId(null);
       })
       .catch(err => {
         console.error(err);
-        setError(`Failed to load project: ${project.name}`);
+        setError(`Failed to load project: ${entry.name}`);
         setLoading(false);
       });
-  }, [currentProject, registry]);
+  }, [currentProjectId, registry]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <p>Loading conceptual model...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading...</div>;
+  if (error) return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>;
+  if (!project) return <div className="min-h-screen flex items-center justify-center text-slate-400">No project selected</div>;
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="bg-white p-8 rounded-xl shadow-sm border border-red-100 max-w-md text-center">
-          <div className="text-red-500 mb-4 text-4xl">⚠️</div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h2>
-          <p className="text-slate-600">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!model) {
-    return <div className="p-8 text-center text-slate-500">No projects found. Run "conceptgen analyze" first.</div>;
-  }
-
-  const currentConceptData = selectedConcept ? model.concepts.find(c => c.metadata.name === selectedConcept) : null;
-  const projectInfo = registry?.projects.find(p => p.id === currentProject);
+  // Derived state
+  const selectedModel = project.models?.find(m => m.id === selectedModelId);
+  const selectedConcept = selectedModel?.concepts?.find(c => c.id === selectedConceptId);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
 
-      {/* Top Navigation Bar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-sm shadow-indigo-200">
-              <Layers className="w-5 h-5" />
-            </div>
-            <span className="font-bold text-slate-900 tracking-tight">Conceptual Viewer</span>
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
+        {/* Sidebar Header */}
+        <div className="p-4 border-b border-slate-100">
+          <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold">
+            <Layers className="w-5 h-5" />
+            <span>Concept Explorer</span>
           </div>
 
-          {/* View Switcher */}
-          <div className="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
-            <button
-              onClick={() => { setViewMode('overview'); setSelectedConcept(null); }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'overview' && !selectedConcept ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => { setViewMode('structure'); setSelectedConcept(null); }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'structure' && !selectedConcept ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Contexts
-            </button>
-          </div>
-        </div>
-
-        {/* Project Selector */}
-        {registry && registry.projects.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Project</span>
+          {/* Project Selector */}
+          <div className="relative">
+            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1 block">Project</label>
             <select
-              value={currentProject || ''}
-              onChange={(e) => setCurrentProject(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              value={currentProjectId || ''}
+              onChange={e => setCurrentProjectId(e.target.value)}
+              className="w-full text-sm p-2 bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              {registry.projects.map(p => (
+              {registry?.projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
-        )}
-      </header>
+        </div>
 
-      {/* Main Content Area */}
-      <main className={`flex-1 ${viewMode === 'structure' && !selectedConcept ? 'overflow-hidden flex flex-col' : 'overflow-auto'}`}>
-        {selectedConcept && currentConceptData ? (
-          // Level 3 & 4: Detail View
-          <ConceptDetailSpec
-            concept={currentConceptData}
-            onBack={() => setSelectedConcept(null)}
-          />
-        ) : viewMode === 'structure' ? (
-          // Structure View
-          <StructureView concepts={model.concepts} onSelect={setSelectedConcept} />
-        ) : (
-          // Level 1 & 2: Overview & Domain Map
-          <div className="pb-20">
-            {/* Level 1: Helicopter View */}
-            <div className="bg-white border-b border-slate-200 shadow-sm">
-              {model.projectOverview ? (
-                <ProjectOverviewHero overview={model.projectOverview} projectName={projectInfo?.name || 'Unknown Project'} />
-              ) : (
-                <div className="p-8 text-center text-slate-500 italic">Project overview not available</div>
-              )}
-            </div>
-
-            {/* Level 2: Domain Map */}
-            <div className="mt-8">
-              <DomainMap concepts={model.concepts} onSelect={setSelectedConcept} />
-            </div>
+        {/* Model List */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="px-2 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+            Models (Contexts)
           </div>
+          <button
+            onClick={() => { setSelectedModelId(null); setSelectedConceptId(null); }}
+            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
+              ${!selectedModelId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+            `}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            Project Overview
+          </button>
+
+          {project.models.map(model => (
+            <button
+              key={model.id}
+              onClick={() => { setSelectedModelId(model.id); setSelectedConceptId(null); }}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
+                ${selectedModelId === model.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+              `}
+            >
+              <Box className="w-4 h-4" />
+              <span className="truncate">{model.title}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
+        {selectedConcept && selectedModel ? (
+          <ConceptDetailSpec concept={selectedConcept} model={selectedModel} onBack={() => setSelectedConceptId(null)} />
+        ) : selectedModel ? (
+          <ModelView model={selectedModel} onSelectConcept={setSelectedConceptId} />
+        ) : (
+          <ProjectDashboard project={project} onSelectModel={setSelectedModelId} />
         )}
       </main>
     </div>
   );
+}
+
+// --- Sub-components (Inline for now, can extract later) ---
+
+function ProjectDashboard({ project, onSelectModel }: { project: ConceptProject, onSelectModel: (id: string) => void }) {
+  return (
+    <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">{project.name}</h1>
+        <p className="text-lg text-slate-600">{project.summary}</p>
+        {project.repoUrl && (
+          <a href={project.repoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-4 text-sm text-indigo-600 hover:underline">
+            <GitBranch className="w-4 h-4" />
+            View Repository
+          </a>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {project.models.map(model => (
+          <button
+            key={model.id}
+            onClick={() => onSelectModel(model.id)}
+            className="text-left bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all group"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+                <Box className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">{model.title}</h3>
+            </div>
+            <p className="text-sm text-slate-500 line-clamp-2">{model.description}</p>
+            <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between text-xs text-slate-400">
+              <span>{model.concepts.length} concepts</span>
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModelView({ model, onSelectConcept }: { model: ConceptModel, onSelectConcept: (id: string) => void }) {
+  // Group concepts by category
+  const grouped: Record<string, any[]> = {};
+  model.concepts.forEach(c => {
+    const cat = c.category || 'other';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(c);
+  });
+
+  const categories = Object.keys(grouped).sort();
+
+  return (
+    <div className="p-8 max-w-6xl mx-auto w-full overflow-y-auto h-full">
+      <div className="mb-8 border-b border-slate-200 pb-6">
+        <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
+          <Box className="w-4 h-4" />
+          <span>Model / Bounded Context</span>
+        </div>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">{model.title}</h1>
+        <p className="text-lg text-slate-600 max-w-3xl">{model.description}</p>
+      </div>
+
+      <div className="space-y-10">
+        {categories.map(cat => (
+          <div key={cat}>
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              {getCategoryIcon(cat)}
+              {cat.replace('_', ' ')}s
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {grouped[cat].map(concept => (
+                <button
+                  key={concept.id}
+                  onClick={() => onSelectConcept(concept.id)}
+                  className="text-left bg-white p-4 rounded-lg border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition-all group"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <span className="font-bold text-slate-900 group-hover:text-indigo-700">{concept.label}</span>
+                    {/* <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase tracking-wide">{cat}</span> */}
+                  </div>
+                  <p className="text-sm text-slate-500 line-clamp-2">{concept.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getCategoryIcon(category: string) {
+  switch (category) {
+    case 'thing': return <Database className="w-4 h-4" />;
+    case 'activity': return <Zap className="w-4 h-4" />;
+    case 'role': return <Code className="w-4 h-4" />; // User icon would be better
+    case 'event': return <Activity className="w-4 h-4" />;
+    default: return <Code className="w-4 h-4" />;
+  }
 }
 
 export default App;

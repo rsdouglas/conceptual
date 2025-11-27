@@ -1,127 +1,72 @@
-export type ConceptType =
-  | 'entity'
-  | 'value_object'
-  | 'aggregate_root'
-  | 'domain_service'
-  | 'application_service'
-  | 'event'
-  | 'other';
+/**
+ * A project (or repository) groups multiple concept models that
+ * belong together, typically around a single product, system, or domain.
+ *
+ * Examples:
+ * - "Slack Data Request System"
+ * - "AI Meeting Assistant (Potato)"
+ * - "Monolith → Services Modernization"
+ *
+ * This is a container *above* individual ConceptModels.
+ * It lets you:
+ * - keep a high-level summary of what the whole thing is,
+ * - organize related models,
+ * - and give LLMs/project tooling one entry point.
+ */
+export type ConceptProjectId = string;
 
-export interface ConceptMetadata {
+export interface ConceptProject {
+  /** Unique identifier for this project/workspace. */
+  id: ConceptProjectId;
+
+  /**
+   * Human-readable name of the project.
+   * Example: "Slack Data Request System" or "Potato Meeting Assistant".
+   */
   name: string;
-  type: ConceptType;
-  boundedContext?: string;
-  aggregateRoot?: boolean;
-  criticality?: 'core' | 'supporting' | 'experimental';
-}
 
-export interface ConceptDefinition {
-  shortDescription: string;
-  ubiquitousLanguage?: string;
-}
+  /**
+   * Short summary (1–3 sentences) of what this project is about.
+   * Ideal for:
+   * - README-style overviews
+   * - LLM context
+   * - UI project cards
+   */
+  summary: string;
 
-export interface ConceptStructureField {
-  name: string;
-  type: string;
+  /**
+   * Optional longer description or background.
+   * Use this for narrative context, scope, and goals.
+   */
   description?: string;
-}
 
-export interface ConceptRelationship {
-  description: string;
-}
+  /**
+   * The concept models that belong to this project.
+   * Each ConceptModel can still reference others via `ConceptExternalRef`.
+   */
+  models: ConceptModel[];
 
-export interface ConceptLifecycle {
-  states?: string[];
-  validTransitions?: string[];
-}
+  /**
+   * Optional ID of the "primary" or default model to open first in the UI.
+   */
+  primaryModelId?: ConceptModelId;
 
-export interface ConceptInvariant {
-  rule: string;
+  /**
+   * Optional tags for organizing or searching projects.
+   * Example: ["slack", "data", "ai", "potato"].
+   */
+  tags?: string[];
+
+  /**
+   * Optional link back to the code repository or documentation.
+   * Example: "https://github.com/your-org/your-repo"
+   */
+  repoUrl?: string;
+
+  /**
+   * Optional free-form notes (for maintainers, TODOs, etc.).
+   */
   notes?: string;
-}
-
-export interface ConceptCommand {
-  name: string;
-  description?: string;
-}
-
-export interface ConceptEvent {
-  name: string;
-  description?: string;
-}
-
-export interface ImplementationLink {
-  kind: 'file' | 'symbol' | 'url';
-  label: string;
-  path: string;
-}
-
-export interface ConceptReference {
-  file: string;        // relative path
-  line?: number;       // optional line number
-  symbol?: string;     // optional symbol name at this location
-}
-
-export interface ExternalSystem {
-  name: string;
-  description?: string;
-  direction?: 'inbound' | 'outbound' | 'bidirectional';
-}
-
-export interface ConceptSheet {
-  metadata: ConceptMetadata;
-  definition: ConceptDefinition;
-  structure: {
-    fields: ConceptStructureField[];
-    relationships: ConceptRelationship[];
-  };
-  lifecycle?: ConceptLifecycle;
-  invariants?: ConceptInvariant[];
-  commands?: ConceptCommand[];
-  events?: ConceptEvent[];
-  implementation?: ImplementationLink[];
-}
-
-export interface ConceptCandidate {
-  name: string;
-  type: ConceptType;
-  criticality: 'core' | 'supporting' | 'experimental';
-  description: string;
-  references: ConceptReference[]; // precise references to relevant code locations
-}
-
-export interface ProjectOverview {
-  summary: string;        // brief description of what the project does
-  systemContext: {
-    externalSystems: ExternalSystem[];    // systems that interact with this one
-    userRoles: { name: string; description?: string }[];  // types of users that interact with the system
-    keyDependencies: string[];    // important external dependencies
-  };
-  containers: {
-    services: string[];            // main deployable services/APIs
-    userInterfaces: string[];      // web apps, mobile apps, CLIs
-    dataStores: string[];          // databases, caches, storage systems
-    backgroundJobs: string[];      // workers, queues, scheduled tasks
-    deploymentTargets: string[];   // where things run (AWS, GCP, Cloudflare, etc.)
-  };
-  modules: {
-    boundaries: string[];          // how codebase is organized
-    responsibilities: string[];    // what each major module does
-    domainFocus: string;           // primary domain area
-  };
-}
-
-export interface ConceptDiscoveryResult {
-  repoRoot: string;
-  generatedAt: string;
-  concepts: ConceptCandidate[];
-}
-
-export interface ConceptModel {
-  repoRoot: string;
-  generatedAt: string;
-  projectOverview?: ProjectOverview;
-  concepts: ConceptSheet[];
 }
 
 export interface ProjectEntry {
@@ -135,11 +80,310 @@ export interface ProjectRegistry {
   projects: ProjectEntry[];
 }
 
-export interface ContextRationalization {
-  contexts: {
-    name: string;
-    description: string;
-    conceptNames: string[];
-  }[];
+/**
+ * TypeScript types for representing a Dubberly-style concept model.
+ *
+ * This version includes:
+ * - Concepts, relationships, views, layout (as before).
+ * - Rules on the model.
+ * - NEW: Explicit lifecycles per concept.
+ * - NEW: Concept aliases (synonyms).
+ * - NEW: Cross-model references for concepts.
+ * - NEW: View-level rules.
+ */
+
+/* -------------------------------------------------------------------------- */
+/*  Basic ID Types                                                            */
+/* -------------------------------------------------------------------------- */
+
+export type ConceptModelId = string;
+export type ConceptId = string;
+export type RelationshipId = string;
+export type ModelViewId = string;
+export type ModelRuleId = string;
+
+/**
+ * Unique ID for a lifecycle specification.
+ * Each lifecycle describes how one concept changes state over time.
+ */
+export type ConceptLifecycleId = string;
+
+/* -------------------------------------------------------------------------- */
+/*  Concept Model                                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface ConceptModel {
+  id: ConceptModelId;
+
+  title: string;
+  subtitle?: string;
+  description?: string;
+
+  concepts: Concept[];
+  relationships: Relationship[];
+
+  /**
+   * Natural-language rules / constraints / principles about the model.
+   */
+  rules?: ModelRule[];
+
+  /**
+   * NEW: Lifecycles for specific concepts.
+   *
+   * Each lifecycle:
+   * - identifies a "subject" concept (e.g. Data Request)
+   * - lists the state concepts that form its state space
+   * - points at relationships that represent allowed transitions
+   * - can mark initial and terminal states
+   */
+  lifecycles?: ConceptLifecycle[];
+
+  /**
+   * Subsets of concepts/relationships used to present focused diagrams
+   * or perspectives (e.g. "Slack bot flow", "Admin UI").
+   */
+  views?: ModelView[];
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Concepts (Nodes)                                                          */
+/* -------------------------------------------------------------------------- */
+
+export type ConceptCategory =
+  | 'thing'
+  | 'activity'
+  | 'role'
+  | 'state'
+  | 'event'
+  | 'place'
+  | 'time'
+  | 'other';
+
+/**
+ * Cross-model reference: indicates that this concept corresponds to (or is
+ * aligned with) a concept in another model.
+ *
+ * Use this to avoid duplication when the same idea appears in multiple models.
+ */
+export interface ConceptExternalRef {
+  /**
+   * ID of the other model that also defines this concept.
+   */
+  modelId: ConceptModelId;
+
+  /**
+   * ID of the concept in that other model.
+   */
+  conceptId: ConceptId;
+
+  /**
+   * Optional note describing how this concept relates to the external one:
+   * e.g. "Identical concept in the Organization Roles model" or
+   * "More detailed version of X in the Evaluation model".
+   */
+  note?: string;
+}
+
+/**
+ * A concept is a labeled node in the Dubberly-style model.
+ */
+export interface Concept {
+  id: ConceptId;
+
+  label: string;
+  description?: string;
+  category?: ConceptCategory;
+
+  /**
+   * NEW: Alternative labels / synonyms / colloquial names.
+   *
+   * Examples:
+   * - "Data request" might have aliases ["request", "query"].
+   * - "Admin" might have aliases ["administrator", "owner"].
+   *
+   * This is especially useful when different teams or tools use different terms.
+   */
+  aliases?: string[];
+
+  /**
+   * NEW: References to equivalent/related concepts in other models.
+   *
+   * This lets you keep multiple models while still showing that
+   * "this concept is the same as that one over there".
+   */
+  externalRefs?: ConceptExternalRef[];
+
+  notes?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Relationships (Arrows)                                                    */
+/* -------------------------------------------------------------------------- */
+
+export type RelationshipCategory =
+  | 'is_a'
+  | 'part_of'
+  | 'causes'
+  | 'enables'
+  | 'prevents'
+  | 'precedes'
+  | 'uses'
+  | 'represents'
+  | 'other';
+
+export interface Relationship {
+  id: RelationshipId;
+
+  from: ConceptId;
+  to: ConceptId;
+
+  phrase?: string;
+  category?: RelationshipCategory;
+  description?: string;
+  notes?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Rules / Constraints / Principles                                          */
+/* -------------------------------------------------------------------------- */
+
+export type ModelRuleKind =
+  | 'assumption'
+  | 'invariant'
+  | 'policy'
+  | 'constraint'
+  | 'principle'
+  | 'other';
+
+export interface ModelRule {
+  id: ModelRuleId;
+
+  title: string;
+  text: string;
+  kind?: ModelRuleKind;
+
+  conceptIds?: ConceptId[];
+  relationshipIds?: RelationshipId[];
+
+  notes?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Lifecycles                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A lifecycle describes how one specific concept moves through states over time.
+ *
+ * Example:
+ * - subjectConceptId = "DataRequest"
+ * - stateConceptIds = ["Pending", "InProgress", "Completed", "Failed"]
+ * - transitionRelationshipIds = relationships connecting those states
+ * - initialStateId = "Pending"
+ * - terminalStateIds = ["Completed", "Failed"]
+ *
+ * NOTE:
+ * - States themselves are regular `Concept` objects (usually with category 'state').
+ * - Transitions are regular `Relationship` objects (usually between state concepts).
+ */
+export interface ConceptLifecycle {
+  id: ConceptLifecycleId;
+
+  /**
+   * The concept whose lifecycle this describes.
+   * Example: the "Data Request" concept.
+   */
+  subjectConceptId: ConceptId;
+
+  /**
+   * Concepts that represent the states in this lifecycle.
+   * These should be existing concepts (often with category 'state').
+   */
+  stateConceptIds: ConceptId[];
+
+  /**
+   * Relationships that represent allowed transitions between states.
+   * These should be relationships whose `from` and `to` are among `stateConceptIds`.
+   */
+  transitionRelationshipIds: RelationshipId[];
+
+  /**
+   * Optional ID of the initial / starting state for this lifecycle.
+   */
+  initialStateId?: ConceptId;
+
+  /**
+   * Optional IDs of terminal / end states (e.g. Completed, Failed).
+   */
+  terminalStateIds?: ConceptId[];
+
+  /**
+   * Optional rules specific to this lifecycle.
+   * Example: "Once a Data Request reaches Completed, it must not change state again."
+   */
+  rules?: ModelRule[];
+
+  notes?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Views (Subsets / Perspectives)                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface ModelView {
+  id: ModelViewId;
+  name: string;
+  description?: string;
+
+  conceptIds: ConceptId[];
+  relationshipIds: RelationshipId[];
+
+  /**
+   * NEW: Rules that apply specifically to this view/perspective.
+   *
+   * Example:
+   * - In the "Slack Bot Flow" view:
+   *   "Only messages from public channels are processed."
+   *
+   * These can coexist with model-level rules. Use view-level rules when
+   * something is true only within this perspective (or when explaining this view).
+   */
+  rules?: ModelRule[];
+
+  layout?: DiagramLayout;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Layout (Diagram Geometry, Optional)                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface DiagramLayout {
+  nodes?: DiagramNodeLayout[];
+  edges?: DiagramEdgeLayout[];
+  groups?: DiagramGroupLayout[];
+}
+
+export interface DiagramNodeLayout {
+  conceptId: ConceptId;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  fixed?: boolean;
+}
+
+export interface DiagramEdgeLayout {
+  relationshipId: RelationshipId;
+  bendPoints?: Array<{ x: number; y: number }>;
+  labelPosition?: { x: number; y: number };
+}
+
+export interface DiagramGroupLayout {
+  id: string;
+  title?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  conceptIds?: ConceptId[];
+}

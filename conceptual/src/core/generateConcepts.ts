@@ -2,18 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  ConceptCandidate,
-  ConceptDiscoveryResult,
+  Concept,
   ConceptModel,
-  ConceptSheet,
-  ProjectOverview,
+  ConceptProject,
+  Relationship,
+  ModelRule,
+  ConceptLifecycle,
+  ProjectEntry,
+  ProjectRegistry,
 } from '../types/model.js';
 import { extractSnippets } from './extractSnippets.js';
 import {
   callLLM,
   LLMEnv,
 } from './llm.js';
-import { renderConceptMarkdown } from './renderMarkdown.js';
 import {
   FileInfo,
   scanRepo,
@@ -23,324 +25,168 @@ import {
   SymbolInfo,
 } from './tsSymbols.js';
 
-// Cache the concept sheet template at module load time
-let CONCEPT_TEMPLATE = '';
-try {
-  // Load from the tool's directory (../../ from /conceptual/src/core/)
-  const currentDir = path.dirname(new URL(import.meta.url).pathname);
-  const templatePath = path.join(currentDir, '../../concept-sheet-annotated.md');
-  CONCEPT_TEMPLATE = fs.readFileSync(templatePath, 'utf8');
-} catch (error) {
-  console.warn('⚠️ Could not load concept template, proceeding without it:', error instanceof Error ? error.message : String(error));
-}
-
-interface AnalyzeOptions {
+export interface AnalyzeOptions {
   repoRoot: string;
   outDir: string;
   clean?: boolean;
   verbose?: boolean;
-  maxDiscoveryIterations?: number;
+  maxModels?: number;
   projectName?: string;
   publish?: boolean;
 }
 
-async function generateProjectOverview(
+// Intermediate type for discovery that includes code references
+interface DiscoveredConcept extends Concept {
+  references: { file: string; line?: number; symbol?: string }[];
+}
+
+interface DiscoveredModel extends ConceptModel {
+  concepts: DiscoveredConcept[];
+}
+
+interface DiscoveredProject extends ConceptProject {
+  models: DiscoveredModel[];
+}
+
+async function discoverProjectStructure(
   llmEnv: LLMEnv,
   repoRoot: string,
   symbols: SymbolInfo[],
   verbose?: boolean,
-): Promise<ProjectOverview> {
-  const prompt = buildProjectOverviewPrompt(repoRoot, symbols);
+): Promise<DiscoveredProject> {
+  const prompt = buildProjectStructurePrompt(repoRoot, symbols);
 
   if (verbose) {
-    console.log('\n📝 Project Overview Prompt:');
+    console.log('\n📝 Project Structure Discovery Prompt:');
     console.log('─'.repeat(50));
     console.log(prompt);
     console.log('─'.repeat(50));
   }
 
-  const overview = await callLLM<ProjectOverview>(
+  const result = await callLLM<DiscoveredProject>(
     llmEnv,
     [
-      { role: "system", content: "You are an expert software architect analyzing codebases to understand project structure and purpose." },
+      { role: "system", content: "You are an expert software architect analyzing codebases to identify high-level domain structure." },
       { role: "user", content: prompt },
     ],
     { responseFormat: 'json_object' },
   );
 
-  return overview;
+  return result;
 }
 
-async function discoverConcepts(
+async function enrichProjectModels(
   llmEnv: LLMEnv,
   repoRoot: string,
-  symbols: SymbolInfo[],
-  overview: ProjectOverview,
+  project: DiscoveredProject,
+  files: FileInfo[],
   verbose?: boolean,
-  maxIterations: number = 5,
-): Promise<ConceptDiscoveryResult> {
-  const allConcepts: ConceptCandidate[] = [];
-  let iteration = 1;
-  let hasMoreConcepts = true;
+  maxModels?: number,
+): Promise<ConceptProject> {
+  const enrichedModels: ConceptModel[] = [];
 
-  while (hasMoreConcepts && iteration <= maxIterations) {
-    console.log(`🔄 Discovery iteration ${iteration}...`);
+  // Apply maxModels limit if provided
+  const modelsToProcess = maxModels ? project.models.slice(0, maxModels) : project.models;
 
-    const prompt = iteration === 1
-      ? buildDiscoveryPrompt(repoRoot, symbols, overview)
-      : buildIterationPrompt(repoRoot, symbols, overview, allConcepts);
-
-    if (verbose) {
-      console.log(`\n📝 Discovery Prompt (Iteration ${iteration}):`);
-      console.log('─'.repeat(50));
-      console.log(prompt);
-      console.log('─'.repeat(50));
-    }
-
-    const result = await callLLM<ConceptDiscoveryResult>(
-      llmEnv,
-      [
-        { role: "system", content: "You are an expert software architect analyzing codebases to identify domain concepts." },
-        { role: "user", content: prompt },
-      ],
-      { responseFormat: 'json_object' },
-    );
-
-    // Filter out duplicates by concept name
-    const newConcepts = result.concepts.filter(
-      newConcept => !allConcepts.some(existing => existing.name === newConcept.name)
-    );
-
-    if (newConcepts.length > 0) {
-      console.log(`   Found ${newConcepts.length} new concepts: ${newConcepts.map(c => c.name).join(', ')}`);
-      allConcepts.push(...newConcepts);
-    } else {
-      console.log(`   No new concepts found`);
-      hasMoreConcepts = false;
-    }
-
-    iteration++;
-
-    // Safety check: stop if we haven't found new concepts in this iteration
-    if (result.concepts.length === 0) {
-      hasMoreConcepts = false;
-    }
+  if (maxModels && project.models.length > maxModels) {
+    console.log(`⚠️ Limiting enrichment to first ${maxModels} models (of ${project.models.length} discovered).`);
   }
 
-  console.log(`📋 Total concepts discovered: ${allConcepts.length}`);
+  for (const model of modelsToProcess) {
+    console.log(`📦 Enriching model: ${model.title}`);
+    const enrichedConcepts: Concept[] = [];
+    const allRelationships: Relationship[] = [...(model.relationships || [])];
+    const allRules: ModelRule[] = [...(model.rules || [])];
+    const allLifecycles: ConceptLifecycle[] = [...(model.lifecycles || [])];
+
+    for (const concept of model.concepts) {
+      console.log(`   🔬 Analyzing concept: ${concept.label}`);
+
+      // Find relevant files
+      const relevantFilePaths = [...new Set(concept.references.map(ref => ref.file))];
+      const relevantFiles = files.filter(f => relevantFilePaths.includes(f.relativePath));
+
+      if (relevantFiles.length === 0) {
+        console.warn(`      ⚠️ No relevant files found for ${concept.label}, skipping enrichment.`);
+        // Remove references before pushing to final model
+        const { references, ...cleanConcept } = concept;
+        enrichedConcepts.push(cleanConcept);
+        continue;
+      }
+
+      const snippets = extractSnippets(relevantFiles);
+      const prompt = buildConceptEnrichmentPrompt(project, model, concept, snippets);
+
+      if (verbose) {
+        console.log(`\n📝 Enrichment Prompt for "${concept.label}":`);
+        console.log('─'.repeat(50));
+        console.log(prompt);
+        console.log('─'.repeat(50));
+      }
+
+      try {
+        const enrichment = await callLLM<{
+          concept: Partial<Concept>;
+          relationships: Relationship[];
+          rules: ModelRule[];
+          lifecycles: ConceptLifecycle[];
+        }>(
+          llmEnv,
+          [
+            { role: "system", content: "You are an expert software architect creating detailed domain concept definitions." },
+            { role: "user", content: prompt },
+          ],
+          { responseFormat: 'json_object' },
+        );
+
+        // Merge enriched data
+        const { references, ...baseConcept } = concept;
+        enrichedConcepts.push({
+          ...baseConcept,
+          ...enrichment.concept,
+          // Keep original ID and Label if not overridden (though ID should be constant)
+          id: concept.id,
+        });
+
+        if (enrichment.relationships) allRelationships.push(...enrichment.relationships);
+        if (enrichment.rules) allRules.push(...enrichment.rules);
+        if (enrichment.lifecycles) allLifecycles.push(...enrichment.lifecycles);
+
+      } catch (error) {
+        console.error(`      ❌ Failed to enrich concept ${concept.label}:`, error);
+        const { references, ...cleanConcept } = concept;
+        enrichedConcepts.push(cleanConcept);
+      }
+    }
+
+    enrichedModels.push({
+      ...model,
+      concepts: enrichedConcepts,
+      relationships: allRelationships,
+      rules: allRules,
+      lifecycles: allLifecycles,
+    });
+  }
 
   return {
-    repoRoot,
-    generatedAt: new Date().toISOString(),
-    concepts: allConcepts,
+    ...project,
+    models: enrichedModels,
   };
 }
 
-async function generateConceptSheets(
-  llmEnv: LLMEnv,
-  repoRoot: string,
-  candidates: ConceptCandidate[],
-  files: FileInfo[],
-  overview: ProjectOverview,
-  verbose?: boolean,
-  outDir?: string,
-  clean?: boolean,
-): Promise<ConceptSheet[]> {
-  const conceptSheets: ConceptSheet[] = [];
-
-  // Clean existing files at the start if requested
-  if (clean && outDir) {
-    console.log(`🧹 Cleaning existing concept files...`);
-    try {
-      const absOut = path.resolve(repoRoot, outDir);
-      if (fs.existsSync(absOut)) {
-        const existingFiles = fs.readdirSync(absOut)
-          .filter(file => file.endsWith('.md'))
-          .map(file => path.join(absOut, file));
-
-        for (const file of existingFiles) {
-          fs.unlinkSync(file);
-        }
-        console.log(`🗑️ Removed ${existingFiles.length} existing concept files`);
-      }
-    } catch (err) {
-      console.warn(`⚠️ Warning: Could not clean existing files:`, err);
-    }
-  }
-
-  for (const candidate of candidates) {
-    console.log(`🔬 Generating sheet for concept: ${candidate.name}`);
-
-    // Get snippets from relevant files (unique files from references)
-    const relevantFilePaths = [...new Set(candidate.references.map(ref => ref.file))];
-    const relevantFiles = files.filter(f =>
-      relevantFilePaths.includes(f.relativePath)
-    );
-
-    if (relevantFiles.length === 0) {
-      console.warn(`⚠️ No relevant files found for concept: ${candidate.name}`);
-      continue;
-    }
-
-    const relevantSnippets = extractSnippets(relevantFiles);
-    const prompt = buildConceptPrompt(repoRoot, candidate, relevantSnippets, overview);
-
-    if (verbose) {
-      console.log(`\n📝 Concept Generation Prompt for "${candidate.name}":`);
-      console.log('─'.repeat(50));
-      console.log(prompt);
-      console.log('─'.repeat(50));
-    }
-
-    try {
-      const conceptSheet = await callLLM<ConceptSheet>(
-        llmEnv,
-        [
-          { role: "system", content: "You are an expert software architect creating detailed domain concept documentation." },
-          { role: "user", content: prompt },
-        ],
-        { responseFormat: 'json_object' },
-      );
-
-      conceptSheets.push(conceptSheet);
-
-      // Write the concept sheet immediately
-      if (outDir) {
-        const absOut = path.resolve(repoRoot, outDir);
-        fs.mkdirSync(absOut, { recursive: true });
-
-        const safe = conceptSheet.metadata.name.replace(/[^a-z0-9-_]/gi, "_").toLowerCase();
-        const filePath = path.join(absOut, `${safe}.md`);
-        const md = renderConceptMarkdown(conceptSheet);
-        fs.writeFileSync(filePath, md, "utf8");
-
-        const relativeFilePath = path.join(outDir, `${safe}.md`);
-        const absoluteFilePath = path.resolve(repoRoot, relativeFilePath);
-        console.log(`📄 Written: ${absoluteFilePath}`);
-      }
-
-    } catch (error) {
-      console.error(`❌ Failed to generate concept sheet for ${candidate.name}:`, error);
-    }
-  }
-
-  return conceptSheets;
-}
-
-async function rationalizeContexts(
-  llmEnv: LLMEnv,
-  conceptSheets: ConceptSheet[],
-  overview: ProjectOverview,
-  verbose?: boolean,
-): Promise<ConceptSheet[]> {
-  // Group current concepts by their assigned context
-  const currentContexts: Record<string, string[]> = {};
-  conceptSheets.forEach(sheet => {
-    const ctx = sheet.metadata.boundedContext || 'Unassigned';
-    if (!currentContexts[ctx]) currentContexts[ctx] = [];
-    currentContexts[ctx].push(sheet.metadata.name);
-  });
-
-  const contextSummary = Object.entries(currentContexts)
-    .map(([ctx, concepts]) => `- ${ctx}: ${concepts.join(', ')}`)
-    .join('\n');
-
-  const prompt = `
-You are analyzing a software system to rationalize its bounded contexts.
-
-Project Summary: ${overview.summary}
-Domain Focus: ${overview.modules.domainFocus}
-
-Current context groupings (may be fragmented or poorly organized):
-${contextSummary}
-
-Your task: Consolidate these into 3-7 meaningful bounded contexts that reflect the actual business domains.
-
-Guidelines:
-- Combine related concepts that serve the same business capability
-- Use domain-driven design principles
-- Prefer fewer, cohesive contexts over many small ones
-- Context names should be business-focused (e.g., "Billing", "Identity", "Catalog")
-- Every concept must be assigned to exactly one context
-
-Return a JSON object with this structure:
-{
-  "contexts": [
-    {
-      "name": "string - business-focused context name",
-      "description": "string - what business capability this context serves",
-      "conceptNames": ["array", "of", "concept", "names", "from", "input"]
-    }
-  ]
-}
-
-Do not explain your reasoning. Return ONLY valid JSON.
-`.trim();
-
-  if (verbose) {
-    console.log('\n📝 Context Rationalization Prompt:');
-    console.log('─'.repeat(50));
-    console.log(prompt);
-    console.log('─'.repeat(50));
-  }
-
-  const rationalization = await callLLM<import('../types/model.js').ContextRationalization>(
-    llmEnv,
-    [
-      { role: "system", content: "You are an expert software architect organizing domain concepts into bounded contexts." },
-      { role: "user", content: prompt },
-    ],
-    { responseFormat: 'json_object' },
-  );
-
-  // Build mapping from concept name to new context
-  const conceptToContext = new Map<string, string>();
-  rationalization.contexts.forEach(ctx => {
-    ctx.conceptNames.forEach(name => {
-      conceptToContext.set(name, ctx.name);
-    });
-  });
-
-  // Update concept sheets with new contexts
-  const updatedSheets = conceptSheets.map(sheet => {
-    const newContext = conceptToContext.get(sheet.metadata.name);
-    if (newContext) {
-      return {
-        ...sheet,
-        metadata: {
-          ...sheet.metadata,
-          boundedContext: newContext,
-        },
-      };
-    }
-    return sheet;
-  });
-
-  console.log(`✅ Rationalized contexts:`);
-  rationalization.contexts.forEach(ctx => {
-    console.log(`   📦 ${ctx.name} (${ctx.conceptNames.length} concepts): ${ctx.description}`);
-  });
-
-  return updatedSheets;
-}
-
-export async function publishToViewer(model: ConceptModel, projectName: string, repoRoot: string) {
+export async function publishToViewer(project: ConceptProject, repoRoot: string) {
   try {
-    // Assume viewer is at ../../viewer relative to this tool's execution context
-    // But we are running from conceptual/dist/cli/index.js usually, or conceptual/src/cli/index.ts
-    // Let's try to resolve relative to the CWD first if we are in the repo, 
-    // but better to resolve relative to the tool location.
+    // Resolve viewer directory relative to this file's location in dist/core or src/core
+    // We assume standard monorepo: conceptual/ -> ../viewer
+    const toolRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+    // If running from dist/core, toolRoot is conceptual/
+    // If running from src/core, toolRoot is conceptual/
 
-    // Actually, simpler: assume standard monorepo structure for now:
-    // conceptual/ (CWD for dev) -> ../viewer
+    // Check if we are in dist or src
+    const isDist = toolRoot.endsWith('dist');
+    const packageRoot = isDist ? path.resolve(toolRoot, '..') : toolRoot;
 
-    // We need to find the viewer directory. 
-    // If we are running "conceptgen analyze" from anywhere, we can't assume ../viewer exists relative to CWD.
-    // However, for this specific user request, they are likely running in the monorepo.
-    // Let's try to find the viewer directory relative to the tool's package root.
-
-    const toolRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..'); // conceptual/src/core -> conceptual/src -> conceptual
-    const viewerDir = path.resolve(toolRoot, '../viewer');
+    const viewerDir = path.resolve(packageRoot, '../viewer');
     const viewerPublicDir = path.resolve(viewerDir, 'public/models');
 
     if (!fs.existsSync(viewerDir)) {
@@ -352,17 +198,17 @@ export async function publishToViewer(model: ConceptModel, projectName: string, 
       fs.mkdirSync(viewerPublicDir, { recursive: true });
     }
 
-    // 1. Save the model file
-    const safeName = projectName.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
-    const modelFileName = `${safeName}.json`;
-    const modelPath = path.join(viewerPublicDir, modelFileName);
+    // Save the project file
+    const safeName = project.id.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+    const projectFileName = `${safeName}.json`;
+    const projectPath = path.join(viewerPublicDir, projectFileName);
 
-    fs.writeFileSync(modelPath, JSON.stringify(model, null, 2), 'utf8');
-    console.log(`🚀 Published model to: ${modelPath}`);
+    fs.writeFileSync(projectPath, JSON.stringify(project, null, 2), 'utf8');
+    console.log(`🚀 Published project to: ${projectPath}`);
 
-    // 2. Update registry
+    // Update registry
     const registryPath = path.join(viewerPublicDir, 'registry.json');
-    let registry: import('../types/model.js').ProjectRegistry = { projects: [] };
+    let registry: ProjectRegistry = { projects: [] };
 
     if (fs.existsSync(registryPath)) {
       try {
@@ -372,14 +218,14 @@ export async function publishToViewer(model: ConceptModel, projectName: string, 
       }
     }
 
-    const entry: import('../types/model.js').ProjectEntry = {
+    const entry: ProjectEntry = {
       id: safeName,
-      name: projectName,
-      path: `models/${modelFileName}`,
+      name: project.name,
+      path: `models/${projectFileName}`,
       updatedAt: new Date().toISOString(),
     };
 
-    const existingIndex = registry.projects.findIndex(p => p.id === safeName);
+    const existingIndex = registry.projects.findIndex((p) => p.id === safeName);
     if (existingIndex >= 0) {
       registry.projects[existingIndex] = entry;
     } else {
@@ -402,11 +248,8 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   const scan = await scanRepo(repoRoot);
   console.log(`📁 Found ${scan.files.length} TypeScript/JavaScript files`);
 
-  // New: get JS/TS symbols
   const symbols: SymbolInfo[] = extractSymbolsFromFiles(repoRoot, scan.files);
   console.log(`🔎 Extracted ${symbols.length} symbols from codebase`);
-
-  const snippets = extractSnippets(scan.files);
 
   const llmEnv: LLMEnv = {
     apiKey: process.env.CONCEPTGEN_API_KEY || "",
@@ -418,55 +261,40 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
     throw new Error("CONCEPTGEN_API_KEY is not set");
   }
 
-  console.log(`📋 Generating project overview...`);
-  const overview = await generateProjectOverview(llmEnv, repoRoot, symbols, opts.verbose);
-  console.log(`✅ Project overview generated:`);
-  console.log(`   📝 Summary: ${overview.summary}`);
-  console.log(`   🌐 System Context:`);
-  console.log(`      External Systems: ${overview.systemContext.externalSystems.map(s => s.name + (s.direction ? ` (${s.direction})` : '')).join(', ') || 'none identified'}`);
-  console.log(`      User Roles: ${overview.systemContext.userRoles.map(r => r.name).join(', ') || 'none identified'}`);
-  console.log(`      Key Dependencies: ${overview.systemContext.keyDependencies.join(', ') || 'none identified'}`);
-  console.log(`   🏗️ Containers:`);
-  console.log(`      Services: ${overview.containers.services.join(', ') || 'none identified'}`);
-  console.log(`      User Interfaces: ${overview.containers.userInterfaces.join(', ') || 'none identified'}`);
-  console.log(`      Data Stores: ${overview.containers.dataStores.join(', ') || 'none identified'}`);
-  console.log(`      Background Jobs: ${overview.containers.backgroundJobs.join(', ') || 'none identified'}`);
-  console.log(`      Deployment Targets: ${overview.containers.deploymentTargets.join(', ') || 'none identified'}`);
-  console.log(`   📦 Modules:`);
-  console.log(`      Boundaries: ${overview.modules.boundaries.join(', ') || 'none identified'}`);
-  console.log(`      Responsibilities: ${overview.modules.responsibilities.join(', ') || 'none identified'}`);
-  console.log(`      Domain Focus: ${overview.modules.domainFocus || 'not specified'}`);
-  console.log(`   🏷️ Project Name: ${projectName}`);
+  console.log(`🏗️ Discovering project structure...`);
+  const discoveredProject = await discoverProjectStructure(llmEnv, repoRoot, symbols, opts.verbose);
 
-  console.log(`🔍 Discovering concept candidates...`);
-  const discoveryResult = await discoverConcepts(llmEnv, repoRoot, symbols, overview, opts.verbose, opts.maxDiscoveryIterations);
+  // Override project name/ID if provided in opts, or keep what LLM found
+  if (opts.projectName) {
+    discoveredProject.name = opts.projectName;
+    discoveredProject.id = opts.projectName.toLowerCase().replace(/\s+/g, '-');
+  }
 
-  console.log(`📝 Writing concept sheets...`);
-  const conceptSheets = await generateConceptSheets(llmEnv, repoRoot, discoveryResult.concepts, scan.files, overview, opts.verbose, opts.outDir, opts.clean);
+  console.log(`✅ Discovered structure:`);
+  console.log(`   Project: ${discoveredProject.name}`);
+  console.log(`   Models: ${discoveredProject.models.map(m => m.title).join(', ')}`);
 
-  console.log(`🔄 Rationalizing bounded contexts...`);
-  const rationalizedSheets = await rationalizeContexts(llmEnv, conceptSheets, overview, opts.verbose);
+  console.log(`💎 Enriching concepts...`);
+  const finalProject = await enrichProjectModels(llmEnv, repoRoot, discoveredProject, scan.files, opts.verbose, opts.maxModels);
 
-  // Create the final ConceptModel
-  const model: ConceptModel = {
-    repoRoot,
-    generatedAt: new Date().toISOString(),
-    projectOverview: overview,
-    concepts: rationalizedSheets,
-  };
+  console.log(`✅ Enrichment complete.`);
 
-  console.log(`✅ Generated ${model.concepts.length} detailed concept sheets`);
-
-  // Write the final concept-model.json file
-  writeConceptSheets(model, opts.outDir, repoRoot);
+  // Write the final project file
+  if (opts.outDir) {
+    const absOut = path.resolve(repoRoot, opts.outDir);
+    fs.mkdirSync(absOut, { recursive: true });
+    const projectPath = path.join(absOut, 'project-model.json');
+    fs.writeFileSync(projectPath, JSON.stringify(finalProject, null, 2), 'utf8');
+    console.log(`📄 Written: ${projectPath}`);
+  }
 
   // Publish to viewer if requested
   if (opts.publish !== false) {
-    await publishToViewer(model, projectName, repoRoot);
+    await publishToViewer(finalProject, repoRoot);
   }
 }
 
-function buildProjectOverviewPrompt(
+function buildProjectStructurePrompt(
   repoRoot: string,
   symbols: SymbolInfo[],
 ): string {
@@ -476,236 +304,196 @@ function buildProjectOverviewPrompt(
     .join('\n');
 
   return `
-We are analyzing a codebase at ${repoRoot}.
+You are an expert in Dubberly-style concept modeling and domain-driven design.
+
+We are analyzing a codebase at \`${repoRoot}\`.
 
 Here is a list of top-level exported symbols discovered in the JS/TS files:
 
 ${symbolText}
 
-Based on these symbols, filenames, and their organization, provide a comprehensive architectural overview following C4 principles.
+Your job is NOT to describe the code structure. Your job is to infer the **real-world conceptual structure** of the system and express it as a **Concept Project** with one or more **Concept Models**, at a high-level "helicopter view".
 
-Return a JSON object with the following structure:
+Think in terms of Dubberly concept models:
+
+- Concepts are **things, activities, roles, states, events, places, or times** in the *domain*, not in the framework.
+- Relationships are how those concepts relate in the real world (e.g., "User places Order", "Slack message becomes Data request").
+- Models are **coherent stories** or subsystems (e.g., "Sales", "Authentication", "Slack Bot Request Flow"), not just folders or modules.
+
+Treat the code as **evidence** of the underlying concepts:
+- Exported symbols hint at important concepts and responsibilities.
+- File paths and names hint at domains or subsystems.
+- Ignore low-level implementation details (framework glue, utilities).
+
+### Very important distinctions
+
+When choosing concepts and models:
+
+- **DO**:
+  - Focus on **domain ideas**: users, orders, tasks, requests, workflows, meetings, evaluations, data sources, permissions, etc.
+  - Merge many small code elements (functions, hooks, services) into a **single conceptual thing** where appropriate.
+    - e.g. many files about "data requests" → one concept: "Data request".
+  - Use **human-friendly concept names**, even if the code uses technical names.
+    - e.g. code symbol \`useDataRequestQuery\` → concept "Data request".
+  - Group concepts into models that correspond to **subsystems / bounded contexts**:
+    - e.g. "Slack Bot", "Admin / Evaluation UI", "Core Data Engine", "Authentication".
+  - Prefer **few, strong concepts** over many weak/technical ones.
+
+- **DO NOT**:
+  - Do NOT create a concept for every exported function or React component.
+  - Do NOT treat technical helpers as concepts (e.g. \`useState\`, \`Button\`, \`ThemeProvider\`, \`logger\`, \`httpClient\`).
+  - Do NOT describe internal libraries or frameworks as concepts.
+    - e.g. "React component" or "Express router" is not a domain concept.
+  - Do NOT mirror the code folder structure mechanically.
+  - Do NOT stay at the implementation level (e.g. "UserService", "OrderRepository") unless you can restate them as domain ideas ("User management", "Order storage").
+
+### Heuristics for Models (ConceptModel)
+
+Think of each **Concept Model** as a Dubberly-style diagram you could draw:
+
+- It should have a clear **domain focus**:
+  - e.g. "Slack Bot Data Request Flow", "Admin Evaluation Configuration", "Core Data Processing", "Authentication & Authorization".
+- It should be **understandable to a product manager** looking at the system.
+- It should NOT be “API routes” or “utility functions” as a model.
+
+Use filenames, directory names, and symbol groupings to infer models:
+- e.g. files under \`apps/slack-bot/*\` likely form a "Slack Bot" model.
+- e.g. files under \`apps/admin-ui/*\` likely form an "Admin UI / Evaluation" model.
+- e.g. files under \`core/data/*\` likely form a "Data Engine" model.
+
+### Heuristics for Concepts
+
+For each model, identify only the **key** concepts (the helicopter view):
+
+Examples of good concepts:
+- "User", "Admin", "Customer"
+- "Slack message", "Data request", "Meeting", "Recording"
+- "Evaluation rule", "Access policy", "Task", "Job", "Workflow"
+- "Result", "Error", "Session", "Token"
+- "Environment", "Project", "Repository"
+
+Examples of things that should **NOT** be concepts here:
+- "useFetch", "useQuery", "Button", "Theme", "Logger", "ConfigLoader"
+- "index.ts", "types.ts", generic helpers
+
+It is OK to:
+- Rename technical names to clearer domain names.
+  - \`DataRequestService\` → concept "Data request handling".
+- Combine multiple related symbols into one concept.
+  - \`SlackMessageHandler\`, \`SlackEventRouter\` → concept "Slack message handling".
+- Infer obvious relationships even if you don’t output them yet (for now, keep \`relationships\` empty).
+
+### Output format
+
+Return a JSON object matching this structure:
+
 {
-  "summary": "string - 2-3 sentence description of what the project does",
-  "systemContext": {
-    "externalSystems": [
-      {
-        "name": "string",
-        "description": "optional string",
-        "direction": "inbound|outbound|bidirectional"
-      }
-    ] - external systems that interact with this one (APIs, databases, third-party services, etc.),
-    "userRoles": [
-      {
-        "name": "string",
-        "description": "optional string"
-      }
-    ] - types of users that interact with the system (end users, admins, APIs, etc.),
-    "keyDependencies": ["string"] - important external dependencies (frameworks, libraries, platforms)
-  },
-  "containers": {
-    "services": ["string"] - main deployable services/APIs/backends,
-    "userInterfaces": ["string"] - web apps, mobile apps, CLIs, admin panels,
-    "dataStores": ["string"] - databases, caches, file storage, external APIs,
-    "backgroundJobs": ["string"] - workers, queues, cron jobs, scheduled tasks,
-    "deploymentTargets": ["string"] - where things run (AWS, GCP, Cloudflare, Vercel, local, etc.)
-  },
-  "modules": {
-    "boundaries": ["string"] - how the codebase is organized into modules/packages,
-    "responsibilities": ["string"] - what each major module/area is responsible for,
-    "domainFocus": "string - primary domain or business area this system serves"
-  }
-}
-
-Provide specific, concrete details based on the code structure and symbols. Focus on architectural context that will help identify domain concepts.
-Do not explain your reasoning. Return ONLY valid JSON.
-`.trim();
-}
-
-function buildDiscoveryPrompt(
-  repoRoot: string,
-  symbols: SymbolInfo[],
-  overview: ProjectOverview,
-): string {
-  const symbolText = symbols
-    .filter(s => s.isExported)
-    .map(s => `- [${s.kind}] ${s.name} (in ${s.relativePath}:${s.line})`)
-    .join('\n');
-
-  return `
-We are analyzing a codebase at ${repoRoot}.
-
-Project Overview:
-Summary: ${overview.summary}
-System Context: External systems (${overview.systemContext.externalSystems.map(s => s.name).join(', ') || 'none'}), User roles (${overview.systemContext.userRoles.map(r => r.name).join(', ') || 'none'}), Key dependencies (${overview.systemContext.keyDependencies.join(', ') || 'none'})
-Containers: Services (${overview.containers.services.join(', ') || 'none'}), UIs (${overview.containers.userInterfaces.join(', ') || 'none'}), Data stores (${overview.containers.dataStores.join(', ') || 'none'})
-Modules: ${overview.modules.boundaries.join(', ') || 'not organized'} - Domain focus: ${overview.modules.domainFocus || 'general'}
-
-Here is a list of top-level exported symbols discovered in the JS/TS files:
-
-${symbolText}
-
-Based on the project overview and these symbol names, types, and their file locations, identify the most important domain concepts that emerge from this codebase.
-
-Return a JSON object with the following structure:
-{
-  "repoRoot": "${repoRoot}",
-  "generatedAt": "${new Date().toISOString()}",
-  "concepts": [
+  "id": "project-id",
+  "name": "Project Name (domain-level, not repo name)",
+  "summary": "Short summary of what this system does in the real world",
+  "description": "Slightly longer description, 2-5 sentences, still at domain level",
+  "models": [
     {
-      "name": "string",           // concept name
-      "type": "entity|value_object|aggregate_root|domain_service|application_service|event|other",
-      "criticality": "core|supporting|experimental", // importance of this concept
-      "description": "string",    // brief description of what this concept represents
-      "references": [             // precise references to relevant code locations
+      "id": "model-id",
+      "title": "Model Title (e.g. Slack Bot Data Request Flow)",
+      "description": "Description of this model/domain in human terms",
+      "concepts": [
         {
-          "file": "string",       // relative file path
-          "line": number,         // optional line number
-          "symbol": "string"      // optional symbol name at this location
+          "id": "concept-id (e.g. data-request)",
+          "label": "Data request",
+          "category": "thing|activity|role|state|event|place|time|other",
+          "description": "Brief domain-level description (what it is, not how it is implemented)",
+          "references": [
+            { "file": "path/to/file.ts", "symbol": "DataRequestService" }
+          ]
         }
-      ]
+      ],
+      "relationships": [],
+      "rules": [],
+      "lifecycles": [],
+      "views": []
     }
   ]
 }
 
-Focus on concepts that have clear implementations in the code. Return 3-8 concepts.
-Do not explain your reasoning. Return ONLY valid JSON.
+Constraints:
+
+- Focus on the most important concepts (the "helicopter view").
+- Keep concepts and models **domain-level**, not implementation-level.
+- Use \`references\` to point back to the *code* that implements the concept.
+- Do NOT explain your reasoning.
+- Return ONLY valid JSON.
 `.trim();
 }
 
-function buildIterationPrompt(
-  repoRoot: string,
-  symbols: SymbolInfo[],
-  overview: ProjectOverview,
-  existingConcepts: ConceptCandidate[],
+function buildConceptEnrichmentPrompt(
+  project: ConceptProject,
+  model: ConceptModel,
+  concept: Concept,
+  snippets: { relativePath: string; snippet: string }[],
 ): string {
-  const symbolText = symbols
-    .filter(s => s.isExported)
-    .map(s => `- [${s.kind}] ${s.name} (in ${s.relativePath}:${s.line})`)
-    .join('\n');
-
-  const existingText = existingConcepts
-    .map(c => `- ${c.name} (${c.type}): ${c.description}`)
-    .join('\n');
-
-  return `
-We are analyzing a codebase at ${repoRoot}.
-
-Project Overview:
-Summary: ${overview.summary}
-System Context: External systems (${overview.systemContext.externalSystems.map(s => s.name).join(', ') || 'none'}), User roles (${overview.systemContext.userRoles.map(r => r.name).join(', ') || 'none'}), Key dependencies (${overview.systemContext.keyDependencies.join(', ') || 'none'})
-Containers: Services (${overview.containers.services.join(', ') || 'none'}), UIs (${overview.containers.userInterfaces.join(', ') || 'none'}), Data stores (${overview.containers.dataStores.join(', ') || 'none'})
-Modules: ${overview.modules.boundaries.join(', ') || 'not organized'} - Domain focus: ${overview.modules.domainFocus || 'general'}
-
-Here are the symbols we found:
-${symbolText}
-
-We have already identified these domain concepts:
-${existingText}
-
-Based on the project overview, symbols, and what we've already found, are there any additional important domain concepts that we haven't covered yet? Look for concepts that complement or relate to the existing ones, or concepts that represent important aspects of the domain that might have been missed.
-
-Return a JSON object with the following structure:
-{
-  "repoRoot": "${repoRoot}",
-  "generatedAt": "${new Date().toISOString()}",
-  "concepts": [
-    {
-      "name": "string",           // concept name (must be different from existing concepts)
-      "type": "entity|value_object|aggregate_root|domain_service|application_service|event|other",
-      "criticality": "core|supporting|experimental", // importance of this concept
-      "description": "string",    // brief description of what this concept represents
-      "references": [             // precise references to relevant code locations
-        {
-          "file": "string",       // relative file path
-          "line": number,         // optional line number
-          "symbol": "string"      // optional symbol name at this location
-        }
-      ]
-    }
-  ]
-}
-
-If you don't find any additional important concepts, return an empty concepts array: {"concepts": []}
-Return 0-5 additional concepts that add meaningful value beyond what we've already found.
-Do not explain your reasoning. Return ONLY valid JSON.
-`.trim();
-}
-
-function buildConceptPrompt(
-  repoRoot: string,
-  conceptCandidate: ConceptCandidate,
-  relevantSnippets: { relativePath: string; snippet: string }[],
-  overview: ProjectOverview,
-): string {
-  const filesText = relevantSnippets
+  const filesText = snippets
     .map((s) => `// File: ${s.relativePath}\n${s.snippet}`)
     .join("\n\n");
 
-  // Use the cached concept sheet template for guidance
-  const templateContent = CONCEPT_TEMPLATE;
-
   return `
-We are analyzing a codebase at ${repoRoot}.
+We are analyzing the concept "${concept.label}" in the model "${model.title}" of project "${project.name}".
 
-Project Overview:
-Summary: ${overview.summary}
-System Context: External systems (${overview.systemContext.externalSystems.map(s => s.name).join(', ') || 'none'}), User roles (${overview.systemContext.userRoles.map(r => r.name).join(', ') || 'none'}), Key dependencies (${overview.systemContext.keyDependencies.join(', ') || 'none'})
-Containers: Services (${overview.containers.services.join(', ') || 'none'}), UIs (${overview.containers.userInterfaces.join(', ') || 'none'}), Data stores (${overview.containers.dataStores.join(', ') || 'none'})
-Modules: ${overview.modules.boundaries.join(', ') || 'not organized'} - Domain focus: ${overview.modules.domainFocus || 'general'}
+Description: ${concept.description}
 
-Focus on the concept: "${conceptCandidate.name}" (${conceptCandidate.type})
-Description: ${conceptCandidate.description}
+Based on the following code snippets, provide a detailed definition of this concept, including:
+1. Aliases (synonyms used in code or comments).
+2. Relationships to other concepts (e.g. "Order has line items", "User places Order").
+3. Rules/Constraints (e.g. "Order must have at least one item").
+4. Lifecycles (if the concept has states, e.g. Pending -> Shipped).
 
-Use the following Concept Sheet template as a guide for the structure and content you should generate:
+Remember: the concept is a **domain-level idea** from a Dubberly-style concept model.
+Use the code only as evidence to understand the concept's meaning, relationships, rules, and lifecycle in the domain.
+Avoid describing frameworks, patterns, or low-level implementation details unless they clarify the domain behavior.
 
-${templateContent ? '```markdown\n' + templateContent + '\n```' : '(Template not available)'}
-
-Based on the project overview, template above, and the following code snippets from relevant files, create a detailed ConceptSheet for this domain concept.
-
+Code Snippets:
 \`\`\`ts
 ${filesText}
 \`\`\`
 
-Return a JSON object matching the ConceptSheet structure:
+Return a JSON object with this structure:
 {
-  "metadata": {
-    "name": "${conceptCandidate.name}",
-    "type": "${conceptCandidate.type}",
-    "criticality": "${conceptCandidate.criticality}",
-    "boundedContext": "optional string",
-    "aggregateRoot": boolean
+  "concept": {
+    "aliases": ["string"],
+    "notes": "string (implementation details, usage notes)"
   },
-  "definition": {
-    "shortDescription": "string",
-    "ubiquitousLanguage": "optional string"
-  },
-  "structure": {
-    "fields": [{"name": "string", "type": "string", "description": "optional string"}],
-    "relationships": [{"description": "string"}]
-  },
-  "lifecycle": {
-    "states": ["optional array of strings"],
-    "validTransitions": ["optional array of strings"]
-  },
-  "invariants": [{"rule": "string", "notes": "optional string"}],
-  "commands": [{"name": "string", "description": "optional string"}],
-  "events": [{"name": "string", "description": "optional string"}],
-  "implementation": [{"kind": "file|symbol|url", "label": "string", "path": "string"}]
+  "relationships": [
+    {
+      "id": "rel-id",
+      "from": "${concept.id}",
+      "to": "target-concept-id",
+      "phrase": "verb phrase (e.g. has, places, contains)",
+      "category": "is_a|part_of|causes|enables|prevents|precedes|uses|represents|other",
+      "description": "string"
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule-id",
+      "title": "Rule Title",
+      "text": "Rule description",
+      "kind": "invariant|constraint|policy|assumption",
+      "conceptIds": ["${concept.id}"]
+    }
+  ],
+  "lifecycles": [
+    {
+      "id": "lifecycle-id",
+      "subjectConceptId": "${concept.id}",
+      "stateConceptIds": ["StateConceptId1", "StateConceptId2"],
+      "transitionRelationshipIds": [],
+      "initialStateId": "StateConceptId1",
+      "terminalStateIds": ["StateConceptId2"]
+    }
+  ]
 }
 
+Only return relationships/rules/lifecycles that are strongly supported by the code.
 Do not explain your reasoning. Return ONLY valid JSON.
 `.trim();
-}
-
-
-function writeConceptSheets(model: ConceptModel, outDir: string, repoRoot: string) {
-  // Individual .md files are already written by generateConceptSheets
-  // Just write the final concept-model.json file
-  const absOut = path.resolve(repoRoot, outDir);
-  const modelPath = path.join(absOut, "..", "concept-model.json");
-  fs.writeFileSync(modelPath, JSON.stringify(model, null, 2), "utf8");
-  const relativeModelPath = path.join(outDir, "..", "concept-model.json");
-  const absoluteModelPath = path.resolve(repoRoot, relativeModelPath);
-  console.log(`📄 Written: ${absoluteModelPath}`);
 }

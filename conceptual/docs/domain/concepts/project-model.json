@@ -1,0 +1,909 @@
+{
+  "id": "conceptual-project",
+  "name": "Conceptual Codebase Analysis",
+  "summary": "A system for analyzing code repositories to extract and model conceptual information.",
+  "description": "This project provides tools and models to scan code repositories, extract code snippets and symbols, analyze them using large language models (LLMs), and generate conceptual models representing the domain structure and relationships within the codebase. It supports publishing results to viewers and managing multiple concept projects and models.",
+  "models": [
+    {
+      "id": "core-analysis",
+      "title": "Core Analysis",
+      "description": "Handles extraction of code snippets, scanning repositories, and symbol extraction to prepare data for conceptual analysis.",
+      "concepts": [
+        {
+          "id": "file-snippet",
+          "label": "FileSnippet",
+          "category": "thing",
+          "description": "Represents a snippet of code extracted from a file.",
+          "aliases": [
+            "CodeSnippet",
+            "Snippet"
+          ],
+          "notes": "Represents a snippet of code extracted from a file, identified by its relative path and containing a substring of the file's content limited by a maximum character count."
+        },
+        {
+          "id": "file-info",
+          "label": "FileInfo",
+          "category": "thing",
+          "description": "Metadata and information about a file in the repository.",
+          "aliases": [
+            "FileMetadata",
+            "FileDetails"
+          ],
+          "notes": "Represents metadata and information about a file in the repository, including its absolute path, relative path to the repository root, and file size in bytes. Used primarily in scanning the repository to collect information about source files with specific extensions, excluding ignored files as per .gitignore."
+        },
+        {
+          "id": "scan-result",
+          "label": "ScanResult",
+          "category": "thing",
+          "description": "Result of scanning a repository, including collected files and data.",
+          "aliases": [
+            "ScanResult",
+            "scan result"
+          ],
+          "notes": "Represents the outcome of scanning a repository directory for source files. Contains a collection of FileInfo objects representing files found during the scan, filtered by default extensions and respecting .gitignore rules."
+        },
+        {
+          "id": "symbol-info",
+          "label": "SymbolInfo",
+          "category": "thing",
+          "description": "Information about a TypeScript symbol extracted from source code.",
+          "aliases": [
+            "TS Symbol Info",
+            "TypeScript Symbol",
+            "Symbol Metadata"
+          ],
+          "notes": "Represents metadata about a TypeScript symbol extracted from source code, including its name, kind (class, interface, etc.), file location (absolute and relative paths), export status, and source code position (line and column). Used for analyzing and indexing symbols in a codebase."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "rel-1",
+          "from": "file-snippet",
+          "to": "file-info",
+          "phrase": "is extracted from",
+          "category": "part_of",
+          "description": "A FileSnippet is extracted from a FileInfo, which represents the source file metadata including relative path and size."
+        },
+        {
+          "id": "rel-1",
+          "from": "file-info",
+          "to": "scan-result",
+          "phrase": "is contained in",
+          "category": "part_of",
+          "description": "FileInfo instances are collected into the files array property of a ScanResult."
+        },
+        {
+          "id": "rel-1",
+          "from": "scan-result",
+          "to": "file-info",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ScanResult contains multiple FileInfo objects representing individual files found during the scan."
+        },
+        {
+          "id": "rel-1",
+          "from": "symbol-info",
+          "to": "file-info",
+          "phrase": "is declared in",
+          "category": "part_of",
+          "description": "Each SymbolInfo is associated with a source file where the symbol is declared, identified by absolute and relative file paths."
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule-1",
+          "title": "Snippet Character Limit",
+          "text": "The snippet string must not exceed the configured maximum number of characters per file (default 2000).",
+          "kind": "constraint",
+          "conceptIds": [
+            "file-snippet"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Snippet Source Path",
+          "text": "The relativePath property of a FileSnippet must correspond to the relativePath of the source FileInfo from which it was extracted.",
+          "kind": "invariant",
+          "conceptIds": [
+            "file-snippet"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "File must have a valid path",
+          "text": "Each FileInfo must have a non-empty absolute path string representing the file location in the filesystem.",
+          "kind": "invariant",
+          "conceptIds": [
+            "file-info"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "File must have a relative path",
+          "text": "Each FileInfo must have a relativePath string representing the file path relative to the repository root.",
+          "kind": "invariant",
+          "conceptIds": [
+            "file-info"
+          ]
+        },
+        {
+          "id": "rule-3",
+          "title": "File size must be non-negative",
+          "text": "The size property of FileInfo must be a non-negative integer representing the file size in bytes.",
+          "kind": "invariant",
+          "conceptIds": [
+            "file-info"
+          ]
+        },
+        {
+          "id": "rule-4",
+          "title": "File must have an allowed extension",
+          "text": "Only files with extensions in the set {'.ts', '.tsx', '.js', '.jsx'} are included as FileInfo instances.",
+          "kind": "constraint",
+          "conceptIds": [
+            "file-info"
+          ]
+        },
+        {
+          "id": "rule-5",
+          "title": "File must not be ignored",
+          "text": "Files matching patterns in the .gitignore file are excluded and not represented as FileInfo.",
+          "kind": "constraint",
+          "conceptIds": [
+            "file-info"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "File Extension Filtering",
+          "text": "Only files with extensions in the default set [.ts, .tsx, .js, .jsx] are included in the ScanResult.",
+          "kind": "constraint",
+          "conceptIds": [
+            "scan-result"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Respect .gitignore",
+          "text": "Files and directories matching patterns in the repository's .gitignore file are excluded from the ScanResult.",
+          "kind": "constraint",
+          "conceptIds": [
+            "scan-result"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Symbol must have a valid name",
+          "text": "A SymbolInfo instance must have a non-empty string as its name; unnamed symbols are not recorded.",
+          "kind": "invariant",
+          "conceptIds": [
+            "symbol-info"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Symbol kind must be one of predefined kinds",
+          "text": "The kind property of SymbolInfo must be one of: 'class', 'interface', 'typeAlias', 'enum', 'function', or 'variable'.",
+          "kind": "constraint",
+          "conceptIds": [
+            "symbol-info"
+          ]
+        },
+        {
+          "id": "rule-3",
+          "title": "Line and column numbers are 1-based",
+          "text": "The line and column properties represent the symbol's position in the source file and are 1-based indices.",
+          "kind": "invariant",
+          "conceptIds": [
+            "symbol-info"
+          ]
+        }
+      ],
+      "lifecycles": [],
+      "views": []
+    },
+    {
+      "id": "llm-integration",
+      "title": "LLM Integration",
+      "description": "Manages interaction with large language models to analyze code and generate conceptual insights.",
+      "concepts": [
+        {
+          "id": "llm-env",
+          "label": "LLMEnv",
+          "category": "thing",
+          "description": "Environment configuration for the large language model.",
+          "aliases": [
+            "LLM Environment",
+            "LLM Configuration",
+            "LLMEnv"
+          ],
+          "notes": "Represents the environment configuration required to call a large language model API. Includes API key for authorization, optional base URL for the API endpoint, and the model identifier string. Used as input to functions that interact with the LLM service."
+        },
+        {
+          "id": "llm-message",
+          "label": "LLMMessage",
+          "category": "thing",
+          "description": "Message format used to communicate with the LLM.",
+          "aliases": [
+            "Message",
+            "ChatMessage"
+          ],
+          "notes": "LLMMessage represents a single message in the conversation with the LLM. It has a role indicating the message origin ('system' or 'user') and a content string containing the message text. It is used as part of an array of messages sent to the LLM API to generate completions."
+        },
+        {
+          "id": "response-format",
+          "label": "ResponseFormat",
+          "category": "other",
+          "description": "Defines the expected format of responses from the LLM.",
+          "aliases": [
+            "responseFormat",
+            "response_format"
+          ],
+          "notes": "ResponseFormat defines the expected format of responses from the LLM call. It is used as an option in the callLLM function to specify whether the response should be returned as plain text ('text') or as a parsed JSON object ('json_object'). The default format is 'text' if not specified."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "rel-1",
+          "from": "llm-env",
+          "to": "llm-integration",
+          "phrase": "is used by",
+          "category": "uses",
+          "description": "LLMEnv is used by the LLM integration layer to configure API calls to the large language model."
+        },
+        {
+          "id": "rel-1",
+          "from": "llm-message",
+          "to": "llm-integration",
+          "phrase": "is used by",
+          "category": "uses",
+          "description": "LLMMessage instances are used by the LLM Integration module to communicate with the LLM API."
+        },
+        {
+          "id": "rel-2",
+          "from": "llm-message",
+          "to": "llm-env",
+          "phrase": "is sent within context of",
+          "category": "other",
+          "description": "LLMMessages are sent as part of a request that includes LLMEnv configuration such as API key and model."
+        },
+        {
+          "id": "rel-1",
+          "from": "response-format",
+          "to": "call-llm-options",
+          "phrase": "is specified in",
+          "category": "part_of",
+          "description": "ResponseFormat is an optional property within CallLlmOptions that determines the format of the LLM response."
+        },
+        {
+          "id": "rel-2",
+          "from": "call-llm",
+          "to": "response-format",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "The callLLM function uses ResponseFormat to decide how to process and return the LLM response content."
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule-1",
+          "title": "API Key Required",
+          "text": "LLMEnv must include a non-empty apiKey string to authorize requests to the LLM API.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-env"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Model Identifier Required",
+          "text": "LLMEnv must specify a model string identifying the LLM model to be used for requests.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-env"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Role must be 'system' or 'user'",
+          "text": "The 'role' property of an LLMMessage must be either 'system' or 'user'.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Content must be non-empty string",
+          "text": "The 'content' property of an LLMMessage must be a non-empty string representing the message text.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "rule-3",
+          "title": "Messages array must contain at least one LLMMessage",
+          "text": "The messages parameter passed to callLLM must be a non-empty array of LLMMessage objects.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Valid ResponseFormat values",
+          "text": "ResponseFormat must be either 'text' or 'json_object'. No other values are supported.",
+          "kind": "constraint",
+          "conceptIds": [
+            "response-format"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Default ResponseFormat",
+          "text": "If ResponseFormat is not specified, the default response format is 'text'.",
+          "kind": "policy",
+          "conceptIds": [
+            "response-format"
+          ]
+        },
+        {
+          "id": "rule-3",
+          "title": "JSON Parsing for 'json_object' format",
+          "text": "When ResponseFormat is 'json_object', the content returned from the LLM must be valid JSON parsable string; otherwise, an error is thrown.",
+          "kind": "invariant",
+          "conceptIds": [
+            "response-format"
+          ]
+        }
+      ],
+      "lifecycles": [],
+      "views": []
+    },
+    {
+      "id": "concept-generation",
+      "title": "Concept Generation",
+      "description": "Coordinates the analysis of repositories and generation of conceptual models, including publishing results.",
+      "concepts": [
+        {
+          "id": "analyze-options",
+          "label": "AnalyzeOptions",
+          "category": "other",
+          "description": "Options and parameters for analyzing a repository.",
+          "aliases": [
+            "AnalysisOptions",
+            "RepoAnalysisOptions",
+            "AnalyzeParams"
+          ],
+          "notes": "AnalyzeOptions defines configuration parameters for analyzing a code repository, including repository root path, output directory, verbosity, cleaning behavior, iteration limits, project naming, and publishing flags. It is used as input to functions that perform project structure discovery and model enrichment."
+        },
+        {
+          "id": "publish-to-viewer",
+          "label": "publishToViewer",
+          "category": "activity",
+          "description": "Function to publish generated conceptual data to a viewer interface.",
+          "aliases": [
+            "publishConceptData",
+            "publishToViewerInterface",
+            "exportToViewer"
+          ],
+          "notes": "Function responsible for publishing generated conceptual data (from code analysis and model enrichment) to a viewer interface. It acts as the final step in the concept generation pipeline, enabling visualization or inspection of the discovered domain concepts and models. Typically invoked after project structure discovery and model enrichment phases."
+        },
+        {
+          "id": "analyze-repo",
+          "label": "analyzeRepo",
+          "category": "activity",
+          "description": "Function to analyze a code repository and produce conceptual models.",
+          "aliases": [
+            "analyzeRepo",
+            "analyze_repo",
+            "analyzeRepository",
+            "discoverProjectStructure",
+            "enrichProjectModels"
+          ],
+          "notes": "Function analyzeRepo orchestrates the analysis of a code repository to produce conceptual domain models. It uses scanning of the repo files, extraction of symbols, and calls to a large language model (LLM) to discover project structure and enrich conceptual models. It produces ConceptProject objects containing ConceptModels and Concepts with references to code locations."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "rel1",
+          "from": "analyze-options",
+          "to": "repository",
+          "phrase": "specifies root of",
+          "category": "part_of",
+          "description": "AnalyzeOptions includes the root path of the repository to analyze."
+        },
+        {
+          "id": "rel2",
+          "from": "analyze-options",
+          "to": "output-directory",
+          "phrase": "specifies output directory for",
+          "category": "part_of",
+          "description": "AnalyzeOptions includes the output directory where analysis results are stored."
+        },
+        {
+          "id": "rel3",
+          "from": "analyze-options",
+          "to": "analysis-process",
+          "phrase": "configures",
+          "category": "enables",
+          "description": "AnalyzeOptions configures parameters that control the analysis process such as verbosity, cleaning, max iterations, and publishing."
+        },
+        {
+          "id": "rel-1",
+          "from": "publish-to-viewer",
+          "to": "conceptual-data",
+          "phrase": "publishes",
+          "category": "uses",
+          "description": "publishToViewer uses the generated conceptual data as input to render or export it to the viewer interface."
+        },
+        {
+          "id": "rel-2",
+          "from": "publish-to-viewer",
+          "to": "viewer-interface",
+          "phrase": "outputs to",
+          "category": "enables",
+          "description": "publishToViewer outputs the conceptual data to a viewer interface for visualization."
+        },
+        {
+          "id": "rel-3",
+          "from": "publish-to-viewer",
+          "to": "concept-generation-process",
+          "phrase": "is part of",
+          "category": "part_of",
+          "description": "publishToViewer is a function within the overall concept generation process that finalizes the data for presentation."
+        },
+        {
+          "id": "rel-1",
+          "from": "analyze-repo",
+          "to": "ConceptProject",
+          "phrase": "produces",
+          "category": "causes",
+          "description": "analyzeRepo produces a ConceptProject representing the conceptual model of the analyzed repository."
+        },
+        {
+          "id": "rel-2",
+          "from": "analyze-repo",
+          "to": "ConceptModel",
+          "phrase": "includes",
+          "category": "part_of",
+          "description": "The ConceptProject produced by analyzeRepo includes multiple ConceptModels representing different domain models."
+        },
+        {
+          "id": "rel-3",
+          "from": "analyze-repo",
+          "to": "Concept",
+          "phrase": "discovers",
+          "category": "causes",
+          "description": "analyzeRepo discovers Concepts within ConceptModels, each representing domain concepts identified in the codebase."
+        },
+        {
+          "id": "rel-4",
+          "from": "analyze-repo",
+          "to": "FileInfo",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "analyzeRepo uses FileInfo data obtained from scanning the repository files to extract symbols and references."
+        },
+        {
+          "id": "rel-5",
+          "from": "analyze-repo",
+          "to": "SymbolInfo",
+          "phrase": "uses",
+          "category": "uses",
+          "description": "analyzeRepo uses SymbolInfo extracted from source files to identify domain concepts and their references."
+        },
+        {
+          "id": "rel-6",
+          "from": "analyze-repo",
+          "to": "LLMEnv",
+          "phrase": "calls",
+          "category": "uses",
+          "description": "analyzeRepo calls a large language model environment to interpret code symbols and generate conceptual models."
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule1",
+          "title": "Repository Root Required",
+          "text": "AnalyzeOptions must specify a valid 'repoRoot' path to the repository to analyze.",
+          "kind": "invariant",
+          "conceptIds": [
+            "analyze-options"
+          ]
+        },
+        {
+          "id": "rule2",
+          "title": "Output Directory Required",
+          "text": "AnalyzeOptions must specify an 'outDir' path where analysis outputs will be saved.",
+          "kind": "invariant",
+          "conceptIds": [
+            "analyze-options"
+          ]
+        },
+        {
+          "id": "rule3",
+          "title": "Max Discovery Iterations Optional",
+          "text": "'maxDiscoveryIterations' is optional and if provided must be a positive integer limiting discovery iterations.",
+          "kind": "constraint",
+          "conceptIds": [
+            "analyze-options"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Conceptual Data Must Be Generated Before Publishing",
+          "text": "publishToViewer can only be invoked after conceptual data has been generated and enriched; it must not publish incomplete or missing data.",
+          "kind": "constraint",
+          "conceptIds": [
+            "publish-to-viewer"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Viewer Interface Must Be Available",
+          "text": "publishToViewer requires a valid viewer interface target to publish to; publishing without a viewer target is invalid.",
+          "kind": "constraint",
+          "conceptIds": [
+            "publish-to-viewer"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Valid Repository Root",
+          "text": "The repoRoot parameter must point to a valid code repository directory accessible for scanning.",
+          "kind": "constraint",
+          "conceptIds": [
+            "analyze-repo"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "ConceptProject Must Contain Models",
+          "text": "The ConceptProject produced by analyzeRepo must contain at least one ConceptModel.",
+          "kind": "invariant",
+          "conceptIds": [
+            "analyze-repo"
+          ]
+        },
+        {
+          "id": "rule-3",
+          "title": "Concepts Must Reference Code",
+          "text": "Each discovered Concept must include at least one code reference indicating its location in the repository.",
+          "kind": "invariant",
+          "conceptIds": [
+            "analyze-repo"
+          ]
+        }
+      ],
+      "lifecycles": [
+        {
+          "id": "lifecycle-1",
+          "subjectConceptId": "analyze-repo",
+          "stateConceptIds": [
+            "Pending",
+            "Scanning",
+            "Discovering",
+            "Enriching",
+            "Completed",
+            "Failed"
+          ],
+          "transitionRelationshipIds": [],
+          "initialStateId": "Pending",
+          "terminalStateIds": [
+            "Completed",
+            "Failed"
+          ]
+        }
+      ],
+      "views": []
+    },
+    {
+      "id": "concept-modeling",
+      "title": "Concept Modeling",
+      "description": "Defines the core domain model for representing concepts, relationships, rules, lifecycles, and views within a Concept Project.",
+      "concepts": [
+        {
+          "id": "concept-project",
+          "label": "ConceptProject",
+          "category": "thing",
+          "description": "Represents a conceptual project containing one or more concept models.",
+          "aliases": [
+            "project",
+            "repository",
+            "workspace"
+          ],
+          "notes": "ConceptProject represents a high-level container grouping multiple ConceptModels that belong together, typically around a single product, system, or domain. It includes metadata such as id, name, summary, optional description, tags, repository URL, notes, and a reference to a primary ConceptModel."
+        },
+        {
+          "id": "concept-model",
+          "label": "ConceptModel",
+          "category": "thing",
+          "description": "Groups related concepts into a bounded context or domain model.",
+          "aliases": [
+            "Domain Model",
+            "Bounded Context"
+          ],
+          "notes": "Groups related concepts into a bounded context or domain model. ConceptModels belong to a ConceptProject, which groups multiple ConceptModels around a single product, system, or domain. ConceptModels can reference other ConceptModels via ConceptExternalRef."
+        },
+        {
+          "id": "concept",
+          "label": "Concept",
+          "category": "thing",
+          "description": "An individual concept such as an entity, value object, or role within a model.",
+          "aliases": [
+            "Concept"
+          ],
+          "notes": "Represents an individual concept such as an entity, value object, or role within a ConceptModel. Used to model domain elements within a project that groups multiple concept models."
+        },
+        {
+          "id": "relationship",
+          "label": "Relationship",
+          "category": "other",
+          "description": "Defines relationships between concepts.",
+          "aliases": [
+            "Relation",
+            "Link",
+            "Association"
+          ],
+          "notes": "Defines semantic or structural connections between two or more concepts within a ConceptModel. Used to express how concepts relate, interact, or depend on each other in the domain. Typically represented as named edges or references linking concept nodes."
+        },
+        {
+          "id": "model-rule",
+          "label": "ModelRule",
+          "category": "other",
+          "description": "Rules that govern the behavior or constraints of the model.",
+          "aliases": [
+            "Rule",
+            "Constraint",
+            "Model Constraint"
+          ],
+          "notes": "ModelRule represents rules that govern the behavior or constraints within a ConceptModel. These rules define how concepts within the model interact or what conditions must be met, ensuring model integrity and correctness."
+        },
+        {
+          "id": "concept-lifecycle",
+          "label": "ConceptLifecycle",
+          "category": "state",
+          "description": "Lifecycle states and transitions for concepts.",
+          "aliases": [
+            "ConceptLifecycle",
+            "Lifecycle",
+            "Concept Lifecycle States"
+          ],
+          "notes": "Represents the lifecycle states and transitions applicable to concepts within a ConceptModel. Used to define the valid states a concept can be in and how it can move between these states."
+        },
+        {
+          "id": "model-view",
+          "label": "ModelView",
+          "category": "other",
+          "description": "Visual or logical views of the concept model.",
+          "aliases": [
+            "View",
+            "Model View",
+            "Concept Model View"
+          ],
+          "notes": "Represents visual or logical views of a concept model within a project. Used to organize and present different perspectives or slices of the concept model for understanding, documentation, or tooling purposes."
+        },
+        {
+          "id": "diagram-layout",
+          "label": "DiagramLayout",
+          "category": "other",
+          "description": "Layout information for diagrams representing models.",
+          "aliases": [
+            "DiagramLayout",
+            "LayoutInfo",
+            "DiagramPositioning"
+          ],
+          "notes": "Represents layout information for diagrams that visualize concept models within a project. Used to store positioning, arrangement, and possibly styling metadata for diagram elements to enable consistent rendering and editing of conceptual diagrams."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "rel-1",
+          "from": "concept-project",
+          "to": "concept-model",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptProject contains one or more ConceptModels that belong to it."
+        },
+        {
+          "id": "rel-2",
+          "from": "concept-project",
+          "to": "concept-model",
+          "phrase": "has primary",
+          "category": "other",
+          "description": "A ConceptProject optionally has a primary ConceptModel identified by primaryModelId, which is the default model to open first in the UI."
+        },
+        {
+          "id": "rel-1",
+          "from": "concept-model",
+          "to": "concept-project",
+          "phrase": "belongs to",
+          "category": "part_of",
+          "description": "Each ConceptModel belongs to exactly one ConceptProject, which groups multiple ConceptModels that belong together."
+        },
+        {
+          "id": "rel-2",
+          "from": "concept-project",
+          "to": "concept-model",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptProject contains multiple ConceptModels that are related around a single product, system, or domain."
+        },
+        {
+          "id": "rel-1",
+          "from": "ConceptProject",
+          "to": "ConceptModel",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptProject contains multiple ConceptModels that belong together around a single product, system, or domain."
+        },
+        {
+          "id": "rel-2",
+          "from": "ConceptModel",
+          "to": "Concept",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptModel contains multiple Concepts representing entities, value objects, or roles."
+        },
+        {
+          "id": "rel-1",
+          "from": "Relationship",
+          "to": "Concept",
+          "phrase": "connects",
+          "category": "other",
+          "description": "A Relationship connects two or more Concepts to define how they are related."
+        },
+        {
+          "id": "rel-2",
+          "from": "ConceptModel",
+          "to": "Relationship",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptModel contains multiple Relationships that define interactions between its Concepts."
+        },
+        {
+          "id": "rel-3",
+          "from": "ConceptProject",
+          "to": "ConceptModel",
+          "phrase": "groups",
+          "category": "part_of",
+          "description": "A ConceptProject groups multiple ConceptModels, each of which may define Relationships."
+        },
+        {
+          "id": "rel-1",
+          "from": "model-rule",
+          "to": "concept-model",
+          "phrase": "belongs to",
+          "category": "part_of",
+          "description": "Each ModelRule is part of a ConceptModel and defines constraints or behaviors within that model."
+        },
+        {
+          "id": "rel-1",
+          "from": "concept-lifecycle",
+          "to": "concept-model",
+          "phrase": "belongs to",
+          "category": "part_of",
+          "description": "A ConceptLifecycle is defined within a ConceptModel to specify lifecycle states and transitions for concepts in that model."
+        },
+        {
+          "id": "rel-2",
+          "from": "concept-lifecycle",
+          "to": "concept",
+          "phrase": "applies to",
+          "category": "represents",
+          "description": "The ConceptLifecycle defines the valid states and transitions that a Concept can have."
+        },
+        {
+          "id": "rel-1",
+          "from": "model-view",
+          "to": "concept-model",
+          "phrase": "represents",
+          "category": "represents",
+          "description": "A ModelView represents a particular visual or logical perspective of a ConceptModel."
+        },
+        {
+          "id": "rel-2",
+          "from": "concept-project",
+          "to": "model-view",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptProject contains multiple ConceptModels, each of which can have multiple ModelViews."
+        },
+        {
+          "id": "rel-1",
+          "from": "diagram-layout",
+          "to": "concept-model",
+          "phrase": "represents layout for",
+          "category": "represents",
+          "description": "DiagramLayout holds the layout information for diagrams that represent ConceptModels."
+        },
+        {
+          "id": "rel-2",
+          "from": "concept-project",
+          "to": "concept-model",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A ConceptProject contains multiple ConceptModels, each of which can have associated DiagramLayouts."
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule-1",
+          "title": "At least one ConceptModel per ConceptProject",
+          "text": "A ConceptProject must contain at least one ConceptModel in its models array.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-project"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "ConceptModel must belong to a ConceptProject",
+          "text": "Every ConceptModel must be associated with exactly one ConceptProject that groups it with related ConceptModels.",
+          "kind": "invariant",
+          "conceptIds": [
+            "concept-model"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Relationship must connect at least two concepts",
+          "text": "Every Relationship must reference at least two distinct Concepts to define a valid connection.",
+          "kind": "constraint",
+          "conceptIds": [
+            "Relationship"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "ModelRule must belong to exactly one ConceptModel",
+          "text": "Every ModelRule is associated with one and only one ConceptModel to ensure clear scope and applicability of the rule.",
+          "kind": "invariant",
+          "conceptIds": [
+            "model-rule"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "Valid State Transitions",
+          "text": "Concepts must only transition between states defined in their ConceptLifecycle.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-lifecycle"
+          ]
+        },
+        {
+          "id": "rule-2",
+          "title": "Lifecycle Completeness",
+          "text": "A ConceptLifecycle must define at least one initial state and one terminal state.",
+          "kind": "invariant",
+          "conceptIds": [
+            "concept-lifecycle"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "ModelView must be associated with a ConceptModel",
+          "text": "Every ModelView must be linked to exactly one ConceptModel that it visually or logically represents.",
+          "kind": "constraint",
+          "conceptIds": [
+            "model-view"
+          ]
+        },
+        {
+          "id": "rule-1",
+          "title": "DiagramLayout must be associated with a ConceptModel",
+          "text": "Every DiagramLayout instance must correspond to exactly one ConceptModel to ensure layout data is relevant and correctly scoped.",
+          "kind": "invariant",
+          "conceptIds": [
+            "diagram-layout"
+          ]
+        }
+      ],
+      "lifecycles": [],
+      "views": []
+    }
+  ]
+}

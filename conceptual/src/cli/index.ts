@@ -16,7 +16,7 @@ program
   .option('--out-dir <dir>', 'Output directory for concept sheets', 'docs/domain/concepts')
   .option('--clean', 'Remove existing concept markdown files before analysis', false)
   .option('--verbose', 'Print LLM prompts for debugging', false)
-  .option('--max-discovery-iterations <number>', 'Maximum number of discovery iterations', '5')
+  .option('--max-models <number>', 'Maximum number of models to enrich (for dev/testing)')
   .option('--name <name>', 'Name of the project (defaults to repo folder name)')
   .option('--publish', 'Publish generated model to viewer', true)
   .option('--no-publish', 'Do not publish generated model to viewer')
@@ -27,7 +27,7 @@ program
         outDir: options.outDir,
         clean: options.clean,
         verbose: options.verbose,
-        maxDiscoveryIterations: parseInt(options.maxDiscoveryIterations),
+        maxModels: options.maxModels ? parseInt(options.maxModels) : undefined,
         projectName: options.name,
         publish: options.publish,
       });

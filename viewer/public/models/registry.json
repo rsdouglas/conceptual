@@ -1,28 +1,22 @@
 {
   "projects": [
     {
-      "id": "test-project",
-      "name": "Test Project",
-      "path": "models/test-project.json",
-      "updatedAt": "2025-11-26T18:50:38.172Z"
-    },
-    {
-      "id": "conceptual",
-      "name": "conceptual",
-      "path": "models/conceptual.json",
-      "updatedAt": "2025-11-26T18:56:25.646Z"
-    },
-    {
-      "id": "mock-criticality",
-      "name": "UI Demo (Mock)",
-      "path": "models/mock-criticality.json",
-      "updatedAt": "2025-11-26T20:00:00.000Z"
+      "id": "conceptual-project",
+      "name": "Conceptual Codebase Analysis",
+      "path": "models/conceptual-project.json",
+      "updatedAt": "2025-11-27T06:44:58.068Z"
     },
     {
       "id": "gcp-data-request",
-      "name": "gcp-data-request",
+      "name": "Slack-based Data Request and Evaluation System",
       "path": "models/gcp-data-request.json",
-      "updatedAt": "2025-11-26T20:22:18.201Z"
+      "updatedAt": "2025-11-27T08:26:20.657Z"
+    },
+    {
+      "id": "gcp-data-request-system",
+      "name": "GCP Data Request and Evaluation System",
+      "path": "models/gcp-data-request-system.json",
+      "updatedAt": "2025-11-27T08:07:59.724Z"
     }
   ]
 }
