@@ -11,13 +11,13 @@ import {
   Code,
   Database,
   GitBranch,
-  Layers,
   LayoutGrid,
   Network,
   Zap,
 } from 'lucide-react';
 
 import type {
+  Concept,
   ConceptModel,
   ConceptProject,
   ProjectEntry,
@@ -78,7 +78,6 @@ function App() {
     const entry = registry.projects.find(p => p.id === currentProjectId);
     if (!entry) return;
 
-    setLoading(true);
     fetch(`${import.meta.env.BASE_URL}${entry.path}`)
       .then(res => res.json())
       .then((data: ConceptProject) => {
@@ -115,7 +114,7 @@ function App() {
         {/* Sidebar Header */}
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold">
-            <Layers className="w-5 h-5" />
+            <img src="/favicon.svg" alt="Conceptual" className="w-5 h-5" />
             <span>Concept Explorer</span>
           </div>
 
@@ -285,7 +284,7 @@ function ProjectDashboard({ project, onSelectModel }: { project: ConceptProject,
 
 function ModelView({ model, onSelectConcept }: { model: ConceptModel, onSelectConcept: (id: string) => void }) {
   // Group concepts by category
-  const grouped: Record<string, any[]> = {};
+  const grouped: Record<string, Concept[]> = {};
   model.concepts.forEach(c => {
     const cat = c.category || 'other';
     if (!grouped[cat]) grouped[cat] = [];
