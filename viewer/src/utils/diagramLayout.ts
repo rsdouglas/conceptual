@@ -4,9 +4,10 @@ import type { ModelView, ConceptModel } from '../../../conceptual/src/types/mode
 const CARD_W = 220;
 const CARD_H = 120;
 const PADDING_X = 24;
-const PADDING_Y = 60; // Extra padding for group title
-const GAP_Y = 16;
-const GROUP_SEPARATION = 60; // Minimum horizontal/vertical spacing between groups
+const PADDING_Y = 60; // space for group title
+const GAP_Y = 50;
+const GROUP_SEPARATION = 60;
+const GROUP_WIDTH = CARD_W + PADDING_X * 2;
 
 export function buildDiagramGraph(view: ModelView, model: ConceptModel) {
     const conceptMap = new Map(model.concepts.map(c => [c.id, c]));
@@ -14,87 +15,121 @@ export function buildDiagramGraph(view: ModelView, model: ConceptModel) {
 
     const groups = view.layout?.groups ?? [];
 
-    // Track which concepts are in groups
+    // Which concepts are in groups
     const groupedConceptIds = new Set<string>(
-        groups.flatMap(g => g.conceptIds ?? [])
+        groups.flatMap(g => g.conceptIds ?? []),
     );
 
-    // Concepts in the view but not in any group
     const ungroupedConceptIds = view.conceptIds.filter(
-        id => !groupedConceptIds.has(id)
+        id => !groupedConceptIds.has(id),
     );
 
     const nodes: Node[] = [];
     const edges: Edge[] = [];
 
-    // 1) Create group background boxes
-    for (const g of groups) {
+    // --- 1) Build group nodes with our own layout ---------------------
+
+    type LayoutGroup = {
+        id: string;
+        title?: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        conceptIds: string[];
+    };
+
+    const layoutGroups: LayoutGroup[] = groups.map((g, index) => {
+        const conceptIds = (g.conceptIds ?? []).filter(id =>
+            view.conceptIds.includes(id),
+        );
+
+        const height =
+            PADDING_Y +
+            PADDING_X +
+            (conceptIds.length > 0
+                ? conceptIds.length * (CARD_H + GAP_Y) - GAP_Y
+                : CARD_H); // minimum
+
+        const x = index * (GROUP_WIDTH + GROUP_SEPARATION);
+        const y = 0;
+
+        const layoutGroup: LayoutGroup = {
+            id: g.id,
+            title: g.title,
+            x,
+            y,
+            width: GROUP_WIDTH,
+            height,
+            conceptIds,
+        };
+
+        // parent/group node
         nodes.push({
             id: `group-${g.id}`,
             type: 'group',
-            position: { x: g.x, y: g.y },
+            position: { x, y },
             data: { title: g.title },
-            style: {
-                width: g.width,
-                height: g.height,
-            },
+            style: { width: GROUP_WIDTH, height },
             selectable: false,
             draggable: false,
         });
-    }
 
-    // 2) Place concept nodes inside groups - center them vertically
-    for (const g of groups) {
-        const ids = (g.conceptIds ?? []).filter(id => view.conceptIds.includes(id));
+        return layoutGroup;
+    });
 
-        ids.forEach((conceptId, index) => {
+    // --- 2) Place concept nodes inside their parent groups ------------
+
+    for (const lg of layoutGroups) {
+        lg.conceptIds.forEach((conceptId, index) => {
             const concept = conceptMap.get(conceptId);
             if (!concept) return;
 
-            // Center nodes horizontally within the group
-            const nodeX = g.x + (g.width - CARD_W) / 2;
-
-            // Stack vertically with padding from title
-            const nodeY = g.y + PADDING_Y + index * (CARD_H + GAP_Y);
-
-            // Ensure node stays within group bounds
-            const maxX = g.x + g.width - CARD_W - PADDING_X;
-            const maxY = g.y + g.height - CARD_H - PADDING_X;
-            const finalX = Math.max(g.x + PADDING_X, Math.min(nodeX, maxX));
-            const finalY = Math.max(g.y + PADDING_Y, Math.min(nodeY, maxY));
+            // position is RELATIVE to parent node
+            const x = PADDING_X;
+            const y = PADDING_Y + index * (CARD_H + GAP_Y);
 
             nodes.push({
                 id: concept.id,
                 type: 'concept',
-                position: { x: finalX, y: finalY },
+                parentId: `group-${lg.id}`,
+                position: { x, y },
                 data: {
                     label: concept.label,
                     category: concept.category,
                     description: concept.description,
                 },
-                style: {
-                    width: CARD_W,
-                    height: CARD_H,
-                },
+                style: { width: CARD_W, },
+                extent: 'parent',
             });
         });
     }
 
-    // 3) Ungrouped concepts - create an "Other" group on the right
+    // --- 3) Ungrouped concepts: put them in an "Other" group ----------
+
     if (ungroupedConceptIds.length > 0) {
-        const laneX = Math.max(...groups.map(g => g.x + g.width), 0) + GROUP_SEPARATION;
-        const laneY = 60;
-        const laneHeight = PADDING_Y + PADDING_X + ungroupedConceptIds.length * (CARD_H + GAP_Y) - GAP_Y;
+        const lastGroupX =
+            layoutGroups.length > 0
+                ? layoutGroups[layoutGroups.length - 1].x +
+                layoutGroups[layoutGroups.length - 1].width
+                : 0;
+
+        const x = lastGroupX + GROUP_SEPARATION;
+        const y = 0;
+
+        const height =
+            PADDING_Y +
+            PADDING_X +
+            (ungroupedConceptIds.length > 0
+                ? ungroupedConceptIds.length * (CARD_H + GAP_Y) - GAP_Y
+                : CARD_H);
 
         nodes.push({
             id: 'group-ungrouped',
             type: 'group',
-            position: { x: laneX, y: laneY },
+            position: { x, y },
             data: { title: 'Other' },
-            style: {
-                width: CARD_W + PADDING_X * 2,
-                height: laneHeight,
-            },
+            style: { width: GROUP_WIDTH, height },
             selectable: false,
             draggable: false,
         });
@@ -103,34 +138,34 @@ export function buildDiagramGraph(view: ModelView, model: ConceptModel) {
             const concept = conceptMap.get(conceptId);
             if (!concept) return;
 
-            // Center horizontally within the "Other" group
-            const x = laneX + PADDING_X;
-            const y = laneY + PADDING_Y + index * (CARD_H + GAP_Y);
+            const nx = PADDING_X;
+            const ny = PADDING_Y + index * (CARD_H + GAP_Y);
 
             nodes.push({
                 id: concept.id,
                 type: 'concept',
-                position: { x, y },
+                parentId: 'group-ungrouped',
+                position: { x: nx, y: ny },
                 data: {
                     label: concept.label,
                     category: concept.category,
                     description: concept.description,
                 },
-                style: {
-                    width: CARD_W,
-                    height: CARD_H,
-                },
+                style: { width: CARD_W },
+                extent: 'parent',
             });
         });
     }
 
-    // 4) Create edges - only for relationships in this view
+    // --- 4) Build edges for relationships in this view ----------------
+
     for (const relId of view.relationshipIds) {
         const rel = relMap.get(relId);
         if (!rel) continue;
-
-        // Only draw edges where both endpoints are in this view
-        if (!view.conceptIds.includes(rel.from) || !view.conceptIds.includes(rel.to)) {
+        if (
+            !view.conceptIds.includes(rel.from) ||
+            !view.conceptIds.includes(rel.to)
+        ) {
             continue;
         }
 
@@ -138,15 +173,15 @@ export function buildDiagramGraph(view: ModelView, model: ConceptModel) {
             id: rel.id,
             source: rel.from,
             target: rel.to,
-            type: 'smoothstep',
-            label: rel.phrase,
+            type: 'hoverEdge',
             animated: false,
-            style: { stroke: '#94a3b8', strokeWidth: 2 },
+            style: { stroke: '#94a3b8', strokeWidth: 1.5 },
             labelStyle: { fontSize: 11, fill: '#64748b' },
             labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9 },
             data: {
+                phrase: rel.phrase,
                 category: rel.category,
-                description: rel.description
+                description: rel.description,
             },
         });
     }

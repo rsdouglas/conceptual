@@ -1,10 +1,11 @@
-import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react';
+import { ReactFlow, Background, Controls } from '@xyflow/react';
 import { useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { ModelView, ConceptModel } from '../../../conceptual/src/types/model';
 import { buildDiagramGraph } from '../utils/diagramLayout';
 import { ConceptNode } from './ConceptNode';
 import { GroupNode } from './GroupNode';
+import { HoverEdge } from './HoverEdge';
 import '@xyflow/react/dist/style.css';
 
 interface Props {
@@ -16,6 +17,11 @@ interface Props {
 const nodeTypes = {
     concept: ConceptNode,
     group: GroupNode,
+};
+
+
+const edgeTypes = {
+    hoverEdge: HoverEdge,
 };
 
 export function DiagramView({ view, model, onBack }: Props) {
@@ -59,6 +65,7 @@ export function DiagramView({ view, model, onBack }: Props) {
                     nodes={nodes}
                     edges={edges}
                     nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
                     fitView
                     attributionPosition="bottom-left"
                     className="bg-slate-50"
@@ -67,22 +74,7 @@ export function DiagramView({ view, model, onBack }: Props) {
                 >
                     <Background color="#cbd5e1" gap={16} />
                     <Controls className="!shadow-lg !border-slate-200" />
-                    <MiniMap
-                        className="!bg-white !border-slate-200"
-                        nodeColor={(node) => {
-                            const category = node.data.category || 'other';
-                            switch (category) {
-                                case 'thing': return '#dbeafe';
-                                case 'activity': return '#dcfce7';
-                                case 'role': return '#f3e8ff';
-                                case 'state': return '#fef3c7';
-                                case 'event': return '#ffedd5';
-                                case 'place': return '#fce7f3';
-                                case 'time': return '#cffafe';
-                                default: return '#f1f5f9';
-                            }
-                        }}
-                    />
+
                 </ReactFlow>
             </div>
         </div>

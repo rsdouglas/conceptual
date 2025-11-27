@@ -387,8 +387,8 @@ export async function publishToViewer(project: ConceptProject, repoRoot: string)
       fs.mkdirSync(viewerPublicDir, { recursive: true });
     }
 
-    // Save the project file
-    const safeName = project.id.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+    // Save the project file, named based on the trailing directory of the repo root
+    const safeName = path.basename(repoRoot).replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
     const projectFileName = `${safeName}.json`;
     const projectPath = path.join(viewerPublicDir, projectFileName);
 

@@ -5,12 +5,6 @@
       "name": "Slack-based Data Request and LLM Evaluation System",
       "path": "models/gcp-data-request.json",
       "updatedAt": "2025-11-27T08:48:17.479Z"
-    },
-    {
-      "id": "gcp-data-request-project",
-      "name": "Slack-based Data Request and LLM Evaluation System",
-      "path": "models/gcp-data-request-project.json",
-      "updatedAt": "2025-11-27T09:19:25.478Z"
     }
   ]
 }

@@ -5,12 +5,9 @@ interface GroupNodeData {
 export function GroupNode({ data }: { data: GroupNodeData }) {
     return (
         <div
-            className="bg-slate-50/50 border border-slate-300/70 rounded-xl"
-            style={{
-                width: '100%',
-                height: '100%',
-                boxSizing: 'border-box',
-            }}
+            className="w-full h-full box-border rounded-xl bg-transparent"
+            style={{ pointerEvents: 'none' }}
+        // ^ important so the wrapper captures drag/selection as intended
         >
             {data.title && (
                 <div className="px-4 py-2 text-sm font-semibold text-slate-600 uppercase tracking-wide">

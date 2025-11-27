@@ -12,7 +12,7 @@ export function ConceptNode({ data }: { data: ConceptNodeData }) {
 
     return (
         <div
-            className={`px-4 py-3 rounded-lg border-2 shadow-sm min-w-[180px] max-w-[200px] ${style.bg} ${style.border}`}
+            className={`w-full h-full box-border px-4 py-3 rounded-lg border-2 shadow-sm relative ${style.bg} ${style.border}`}
         >
             <Handle type="target" position={Position.Top} className="!bg-slate-400" />
 
