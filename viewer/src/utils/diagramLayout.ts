@@ -1,190 +1,111 @@
-import type { Node, Edge } from '@xyflow/react';
-import type { ModelView, ConceptModel } from '../../../conceptual/src/types/model';
+import type {
+  ConceptModel,
+  ModelView,
+} from '../../../conceptual/src/types/model';
 
-const CARD_W = 220;
-const CARD_H = 120;
-const PADDING_X = 24;
-const PADDING_Y = 60; // space for group title
-const GAP_Y = 50;
-const GROUP_SEPARATION = 60;
-const GROUP_WIDTH = CARD_W + PADDING_X * 2;
+export interface GraphNode {
+    id: string;
+    type: 'concept' | 'group';
+    data: {
+        label: string;
+        category?: string;
+        description?: string;
+        title?: string;
+    };
+}
+
+export interface GraphEdge {
+    id: string;
+    source: string;
+    target: string;
+    data: {
+        phrase?: string;
+        category?: string;
+        description?: string;
+    };
+}
 
 export function buildDiagramGraph(view: ModelView, model: ConceptModel) {
     const conceptMap = new Map(model.concepts.map(c => [c.id, c]));
     const relMap = new Map(model.relationships.map(r => [r.id, r]));
 
-    const groups = view.layout?.groups ?? [];
+    // Collect all concept IDs that should be in this view:
+    // 1. Concepts explicitly listed in view.conceptIds that exist in the model
+    // 2. Concepts referenced in relationships that are in view.relationshipIds
+    const conceptIds = new Set<string>();
 
-    // Which concepts are in groups
-    const groupedConceptIds = new Set<string>(
-        groups.flatMap(g => g.conceptIds ?? []),
-    );
-
-    const ungroupedConceptIds = view.conceptIds.filter(
-        id => !groupedConceptIds.has(id),
-    );
-
-    const nodes: Node[] = [];
-    const edges: Edge[] = [];
-
-    // --- 1) Build group nodes with our own layout ---------------------
-
-    type LayoutGroup = {
-        id: string;
-        title?: string;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        conceptIds: string[];
-    };
-
-    const layoutGroups: LayoutGroup[] = groups.map((g, index) => {
-        const conceptIds = (g.conceptIds ?? []).filter(id =>
-            view.conceptIds.includes(id),
-        );
-
-        const height =
-            PADDING_Y +
-            PADDING_X +
-            (conceptIds.length > 0
-                ? conceptIds.length * (CARD_H + GAP_Y) - GAP_Y
-                : CARD_H); // minimum
-
-        const x = index * (GROUP_WIDTH + GROUP_SEPARATION);
-        const y = 0;
-
-        const layoutGroup: LayoutGroup = {
-            id: g.id,
-            title: g.title,
-            x,
-            y,
-            width: GROUP_WIDTH,
-            height,
-            conceptIds,
-        };
-
-        // parent/group node
-        nodes.push({
-            id: `group-${g.id}`,
-            type: 'group',
-            position: { x, y },
-            data: { title: g.title },
-            style: { width: GROUP_WIDTH, height },
-            selectable: false,
-            draggable: false,
-        });
-
-        return layoutGroup;
+    // Add concepts explicitly listed in the view (if they exist in model)
+    view.conceptIds.forEach(id => {
+        if (conceptMap.has(id)) {
+            conceptIds.add(id);
+        }
     });
 
-    // --- 2) Place concept nodes inside their parent groups ------------
+    // Add concepts referenced in relationships in this view
+    view.relationshipIds.forEach(relId => {
+        const rel = relMap.get(relId);
+        if (rel) {
+            conceptIds.add(rel.from);
+            conceptIds.add(rel.to);
+        }
+    });
 
-    for (const lg of layoutGroups) {
-        lg.conceptIds.forEach((conceptId, index) => {
-            const concept = conceptMap.get(conceptId);
-            if (!concept) return;
-
-            // position is RELATIVE to parent node
-            const x = PADDING_X;
-            const y = PADDING_Y + index * (CARD_H + GAP_Y);
-
-            nodes.push({
+    const nodes: GraphNode[] = Array.from(conceptIds).map(conceptId => {
+        const concept = conceptMap.get(conceptId);
+        if (concept) {
+            // Concept exists in model
+            return {
                 id: concept.id,
                 type: 'concept',
-                parentId: `group-${lg.id}`,
-                position: { x, y },
                 data: {
                     label: concept.label,
                     category: concept.category,
                     description: concept.description,
                 },
-                style: { width: CARD_W, },
-                extent: 'parent',
-            });
-        });
-    }
-
-    // --- 3) Ungrouped concepts: put them in an "Other" group ----------
-
-    if (ungroupedConceptIds.length > 0) {
-        const lastGroupX =
-            layoutGroups.length > 0
-                ? layoutGroups[layoutGroups.length - 1].x +
-                layoutGroups[layoutGroups.length - 1].width
-                : 0;
-
-        const x = lastGroupX + GROUP_SEPARATION;
-        const y = 0;
-
-        const height =
-            PADDING_Y +
-            PADDING_X +
-            (ungroupedConceptIds.length > 0
-                ? ungroupedConceptIds.length * (CARD_H + GAP_Y) - GAP_Y
-                : CARD_H);
-
-        nodes.push({
-            id: 'group-ungrouped',
-            type: 'group',
-            position: { x, y },
-            data: { title: 'Other' },
-            style: { width: GROUP_WIDTH, height },
-            selectable: false,
-            draggable: false,
-        });
-
-        ungroupedConceptIds.forEach((conceptId, index) => {
-            const concept = conceptMap.get(conceptId);
-            if (!concept) return;
-
-            const nx = PADDING_X;
-            const ny = PADDING_Y + index * (CARD_H + GAP_Y);
-
-            nodes.push({
-                id: concept.id,
+            };
+        } else {
+            // Concept doesn't exist in model - create a minimal one
+            return {
+                id: conceptId,
                 type: 'concept',
-                parentId: 'group-ungrouped',
-                position: { x: nx, y: ny },
                 data: {
-                    label: concept.label,
-                    category: concept.category,
-                    description: concept.description,
+                    label: conceptId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                    category: 'unknown',
+                    description: `Concept referenced in relationships but not defined in model`,
                 },
-                style: { width: CARD_W },
-                extent: 'parent',
-            });
-        });
-    }
+            };
+        }
+    });
 
-    // --- 4) Build edges for relationships in this view ----------------
+    const edges: GraphEdge[] = [];
+    const edgeMap = new Map<string, GraphEdge>();
 
+    // Build edges for relationships in this view, deduplicating by source-target pair
     for (const relId of view.relationshipIds) {
         const rel = relMap.get(relId);
         if (!rel) continue;
-        if (
-            !view.conceptIds.includes(rel.from) ||
-            !view.conceptIds.includes(rel.to)
-        ) {
-            continue;
-        }
 
-        edges.push({
-            id: rel.id,
-            source: rel.from,
-            target: rel.to,
-            type: 'hoverEdge',
-            animated: false,
-            style: { stroke: '#94a3b8', strokeWidth: 1.5 },
-            labelStyle: { fontSize: 11, fill: '#64748b' },
-            labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9 },
-            data: {
-                phrase: rel.phrase,
-                category: rel.category,
-                description: rel.description,
-            },
-        });
+        // Create a unique key for this edge pair (sorted to handle bidirectional duplicates)
+        const nodes = [rel.from, rel.to].sort();
+        const edgeKey = `${nodes[0]}<->${nodes[1]}`;
+
+        // Only add if we haven't seen this pair before
+        if (!edgeMap.has(edgeKey)) {
+            edgeMap.set(edgeKey, {
+                id: rel.id,
+                source: rel.from,
+                target: rel.to,
+                data: {
+                    phrase: rel.phrase,
+                    category: rel.category,
+                    description: rel.description,
+                },
+            });
+        }
     }
+
+    // Convert map to array
+    edges.push(...Array.from(edgeMap.values()));
 
     return { nodes, edges };
 }
