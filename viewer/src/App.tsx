@@ -42,7 +42,7 @@ function App() {
 
   // Load registry
   useEffect(() => {
-    fetch('/models/registry.json')
+    fetch(`${import.meta.env.BASE_URL}models/registry.json`)
       .then(res => res.json())
       .then((data: ProjectRegistry) => {
         setRegistry(data);
@@ -66,7 +66,7 @@ function App() {
     if (!entry) return;
 
     setLoading(true);
-    fetch(`/${entry.path}`)
+    fetch(`${import.meta.env.BASE_URL}${entry.path}`)
       .then(res => res.json())
       .then((data: ConceptProject) => {
         setProject(data);
