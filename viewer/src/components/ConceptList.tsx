@@ -1,13 +1,34 @@
-import type { ConceptModel } from '../../../conceptual/src/types/model';
+import type { ConceptModel, ProjectRegistry } from '../../../conceptual/src/types/model';
 
 interface Props {
   model: ConceptModel;
   onSelect: (name: string) => void;
+  registry?: ProjectRegistry | null;
+  currentProject?: string | null;
+  onSelectProject?: (id: string) => void;
 }
 
-export function ConceptList({ model, onSelect }: Props) {
+export function ConceptList({ model, onSelect, registry, currentProject, onSelectProject }: Props) {
   return (
     <div style={{ padding: 16, borderRight: '1px solid #ddd', width: 280 }}>
+      {/* Project Selector */}
+      {registry && registry.projects.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: 4 }}>
+            Project
+          </label>
+          <select
+            value={currentProject || ''}
+            onChange={(e) => onSelectProject?.(e.target.value)}
+            style={{ width: '100%', padding: 4 }}
+          >
+            {registry.projects.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <h2 style={{ marginTop: 0 }}>Navigation</h2>
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {/* Project Overview */}

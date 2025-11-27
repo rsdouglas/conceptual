@@ -1,0 +1,28 @@
+{
+  "projects": [
+    {
+      "id": "test-project",
+      "name": "Test Project",
+      "path": "models/test-project.json",
+      "updatedAt": "2025-11-26T18:50:38.172Z"
+    },
+    {
+      "id": "conceptual",
+      "name": "conceptual",
+      "path": "models/conceptual.json",
+      "updatedAt": "2025-11-26T18:56:25.646Z"
+    },
+    {
+      "id": "mock-criticality",
+      "name": "UI Demo (Mock)",
+      "path": "models/mock-criticality.json",
+      "updatedAt": "2025-11-26T20:00:00.000Z"
+    },
+    {
+      "id": "gcp-data-request",
+      "name": "gcp-data-request",
+      "path": "models/gcp-data-request.json",
+      "updatedAt": "2025-11-26T20:22:18.201Z"
+    }
+  ]
+}

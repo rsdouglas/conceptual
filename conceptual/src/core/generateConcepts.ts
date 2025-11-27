@@ -26,9 +26,9 @@ import {
 // Cache the concept sheet template at module load time
 let CONCEPT_TEMPLATE = '';
 try {
-  // Load from the root directory (../../.. from /conceptual/src/core/)
+  // Load from the tool's directory (../../ from /conceptual/src/core/)
   const currentDir = path.dirname(new URL(import.meta.url).pathname);
-  const templatePath = path.join(currentDir, '../../../concept-sheet-annotated.md');
+  const templatePath = path.join(currentDir, '../../concept-sheet-annotated.md');
   CONCEPT_TEMPLATE = fs.readFileSync(templatePath, 'utf8');
 } catch (error) {
   console.warn('⚠️ Could not load concept template, proceeding without it:', error instanceof Error ? error.message : String(error));
@@ -40,6 +40,8 @@ interface AnalyzeOptions {
   clean?: boolean;
   verbose?: boolean;
   maxDiscoveryIterations?: number;
+  projectName?: string;
+  publish?: boolean;
 }
 
 async function generateProjectOverview(
@@ -225,10 +227,178 @@ async function generateConceptSheets(
   return conceptSheets;
 }
 
+async function rationalizeContexts(
+  llmEnv: LLMEnv,
+  conceptSheets: ConceptSheet[],
+  overview: ProjectOverview,
+  verbose?: boolean,
+): Promise<ConceptSheet[]> {
+  // Group current concepts by their assigned context
+  const currentContexts: Record<string, string[]> = {};
+  conceptSheets.forEach(sheet => {
+    const ctx = sheet.metadata.boundedContext || 'Unassigned';
+    if (!currentContexts[ctx]) currentContexts[ctx] = [];
+    currentContexts[ctx].push(sheet.metadata.name);
+  });
+
+  const contextSummary = Object.entries(currentContexts)
+    .map(([ctx, concepts]) => `- ${ctx}: ${concepts.join(', ')}`)
+    .join('\n');
+
+  const prompt = `
+You are analyzing a software system to rationalize its bounded contexts.
+
+Project Summary: ${overview.summary}
+Domain Focus: ${overview.modules.domainFocus}
+
+Current context groupings (may be fragmented or poorly organized):
+${contextSummary}
+
+Your task: Consolidate these into 3-7 meaningful bounded contexts that reflect the actual business domains.
+
+Guidelines:
+- Combine related concepts that serve the same business capability
+- Use domain-driven design principles
+- Prefer fewer, cohesive contexts over many small ones
+- Context names should be business-focused (e.g., "Billing", "Identity", "Catalog")
+- Every concept must be assigned to exactly one context
+
+Return a JSON object with this structure:
+{
+  "contexts": [
+    {
+      "name": "string - business-focused context name",
+      "description": "string - what business capability this context serves",
+      "conceptNames": ["array", "of", "concept", "names", "from", "input"]
+    }
+  ]
+}
+
+Do not explain your reasoning. Return ONLY valid JSON.
+`.trim();
+
+  if (verbose) {
+    console.log('\n📝 Context Rationalization Prompt:');
+    console.log('─'.repeat(50));
+    console.log(prompt);
+    console.log('─'.repeat(50));
+  }
+
+  const rationalization = await callLLM<import('../types/model.js').ContextRationalization>(
+    llmEnv,
+    [
+      { role: "system", content: "You are an expert software architect organizing domain concepts into bounded contexts." },
+      { role: "user", content: prompt },
+    ],
+    { responseFormat: 'json_object' },
+  );
+
+  // Build mapping from concept name to new context
+  const conceptToContext = new Map<string, string>();
+  rationalization.contexts.forEach(ctx => {
+    ctx.conceptNames.forEach(name => {
+      conceptToContext.set(name, ctx.name);
+    });
+  });
+
+  // Update concept sheets with new contexts
+  const updatedSheets = conceptSheets.map(sheet => {
+    const newContext = conceptToContext.get(sheet.metadata.name);
+    if (newContext) {
+      return {
+        ...sheet,
+        metadata: {
+          ...sheet.metadata,
+          boundedContext: newContext,
+        },
+      };
+    }
+    return sheet;
+  });
+
+  console.log(`✅ Rationalized contexts:`);
+  rationalization.contexts.forEach(ctx => {
+    console.log(`   📦 ${ctx.name} (${ctx.conceptNames.length} concepts): ${ctx.description}`);
+  });
+
+  return updatedSheets;
+}
+
+export async function publishToViewer(model: ConceptModel, projectName: string, repoRoot: string) {
+  try {
+    // Assume viewer is at ../../viewer relative to this tool's execution context
+    // But we are running from conceptual/dist/cli/index.js usually, or conceptual/src/cli/index.ts
+    // Let's try to resolve relative to the CWD first if we are in the repo, 
+    // but better to resolve relative to the tool location.
+
+    // Actually, simpler: assume standard monorepo structure for now:
+    // conceptual/ (CWD for dev) -> ../viewer
+
+    // We need to find the viewer directory. 
+    // If we are running "conceptgen analyze" from anywhere, we can't assume ../viewer exists relative to CWD.
+    // However, for this specific user request, they are likely running in the monorepo.
+    // Let's try to find the viewer directory relative to the tool's package root.
+
+    const toolRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..'); // conceptual/src/core -> conceptual/src -> conceptual
+    const viewerDir = path.resolve(toolRoot, '../viewer');
+    const viewerPublicDir = path.resolve(viewerDir, 'public/models');
+
+    if (!fs.existsSync(viewerDir)) {
+      console.warn(`⚠️ Could not find viewer directory at ${viewerDir}, skipping publish.`);
+      return;
+    }
+
+    if (!fs.existsSync(viewerPublicDir)) {
+      fs.mkdirSync(viewerPublicDir, { recursive: true });
+    }
+
+    // 1. Save the model file
+    const safeName = projectName.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+    const modelFileName = `${safeName}.json`;
+    const modelPath = path.join(viewerPublicDir, modelFileName);
+
+    fs.writeFileSync(modelPath, JSON.stringify(model, null, 2), 'utf8');
+    console.log(`🚀 Published model to: ${modelPath}`);
+
+    // 2. Update registry
+    const registryPath = path.join(viewerPublicDir, 'registry.json');
+    let registry: import('../types/model.js').ProjectRegistry = { projects: [] };
+
+    if (fs.existsSync(registryPath)) {
+      try {
+        registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+      } catch (e) {
+        console.warn('⚠️ Could not parse existing registry, creating new one.');
+      }
+    }
+
+    const entry: import('../types/model.js').ProjectEntry = {
+      id: safeName,
+      name: projectName,
+      path: `models/${modelFileName}`,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const existingIndex = registry.projects.findIndex(p => p.id === safeName);
+    if (existingIndex >= 0) {
+      registry.projects[existingIndex] = entry;
+    } else {
+      registry.projects.push(entry);
+    }
+
+    fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2), 'utf8');
+    console.log(`📋 Updated registry at: ${registryPath}`);
+
+  } catch (error) {
+    console.error('❌ Failed to publish to viewer:', error);
+  }
+}
+
 export async function analyzeRepo(opts: AnalyzeOptions) {
   const repoRoot = path.resolve(opts.repoRoot);
+  const projectName = opts.projectName || path.basename(repoRoot);
 
-  console.log(`🔍 Scanning repository: ${repoRoot}`);
+  console.log(`🔍 Scanning repository: ${repoRoot} (Project: ${projectName})`);
   const scan = await scanRepo(repoRoot);
   console.log(`📁 Found ${scan.files.length} TypeScript/JavaScript files`);
 
@@ -266,6 +436,7 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   console.log(`      Boundaries: ${overview.modules.boundaries.join(', ') || 'none identified'}`);
   console.log(`      Responsibilities: ${overview.modules.responsibilities.join(', ') || 'none identified'}`);
   console.log(`      Domain Focus: ${overview.modules.domainFocus || 'not specified'}`);
+  console.log(`   🏷️ Project Name: ${projectName}`);
 
   console.log(`🔍 Discovering concept candidates...`);
   const discoveryResult = await discoverConcepts(llmEnv, repoRoot, symbols, overview, opts.verbose, opts.maxDiscoveryIterations);
@@ -273,18 +444,26 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   console.log(`📝 Writing concept sheets...`);
   const conceptSheets = await generateConceptSheets(llmEnv, repoRoot, discoveryResult.concepts, scan.files, overview, opts.verbose, opts.outDir, opts.clean);
 
+  console.log(`🔄 Rationalizing bounded contexts...`);
+  const rationalizedSheets = await rationalizeContexts(llmEnv, conceptSheets, overview, opts.verbose);
+
   // Create the final ConceptModel
   const model: ConceptModel = {
     repoRoot,
     generatedAt: new Date().toISOString(),
     projectOverview: overview,
-    concepts: conceptSheets,
+    concepts: rationalizedSheets,
   };
 
   console.log(`✅ Generated ${model.concepts.length} detailed concept sheets`);
 
   // Write the final concept-model.json file
   writeConceptSheets(model, opts.outDir, repoRoot);
+
+  // Publish to viewer if requested
+  if (opts.publish !== false) {
+    await publishToViewer(model, projectName, repoRoot);
+  }
 }
 
 function buildProjectOverviewPrompt(
@@ -376,6 +555,7 @@ Return a JSON object with the following structure:
     {
       "name": "string",           // concept name
       "type": "entity|value_object|aggregate_root|domain_service|application_service|event|other",
+      "criticality": "core|supporting|experimental", // importance of this concept
       "description": "string",    // brief description of what this concept represents
       "references": [             // precise references to relevant code locations
         {
@@ -433,6 +613,7 @@ Return a JSON object with the following structure:
     {
       "name": "string",           // concept name (must be different from existing concepts)
       "type": "entity|value_object|aggregate_root|domain_service|application_service|event|other",
+      "criticality": "core|supporting|experimental", // importance of this concept
       "description": "string",    // brief description of what this concept represents
       "references": [             // precise references to relevant code locations
         {
@@ -491,6 +672,7 @@ Return a JSON object matching the ConceptSheet structure:
   "metadata": {
     "name": "${conceptCandidate.name}",
     "type": "${conceptCandidate.type}",
+    "criticality": "${conceptCandidate.criticality}",
     "boundedContext": "optional string",
     "aggregateRoot": boolean
   },

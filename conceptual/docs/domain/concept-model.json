@@ -1,0 +1,861 @@
+{
+  "repoRoot": "/Users/rs/repos/conceptual/conceptual",
+  "generatedAt": "2025-11-26T18:56:25.639Z",
+  "projectOverview": {
+    "summary": "This project analyzes source code repositories to extract conceptual models and metadata about code structure, symbols, and relationships. It leverages language models to generate and publish conceptual documentation and insights for software projects.",
+    "systemContext": {
+      "externalSystems": [
+        {
+          "name": "Large Language Model (LLM) API",
+          "description": "External AI service used to analyze code and generate conceptual content",
+          "direction": "outbound"
+        },
+        {
+          "name": "Code Repository",
+          "description": "Source code repositories scanned and analyzed by the system",
+          "direction": "inbound"
+        },
+        {
+          "name": "Concept Viewer",
+          "description": "Frontend or external system where generated conceptual documentation is published",
+          "direction": "outbound"
+        }
+      ],
+      "userRoles": [
+        {
+          "name": "Developer",
+          "description": "Uses the system to gain insights and documentation about codebases"
+        },
+        {
+          "name": "Project Maintainer",
+          "description": "Manages and reviews conceptual models and project overviews generated"
+        }
+      ],
+      "keyDependencies": [
+        "TypeScript",
+        "Node.js",
+        "OpenAI or similar LLM API",
+        "Markdown rendering libraries"
+      ]
+    },
+    "containers": {
+      "services": [
+        "Code Analysis Service",
+        "Concept Generation Service"
+      ],
+      "userInterfaces": [
+        "Concept Viewer (possibly web-based or markdown-based)"
+      ],
+      "dataStores": [
+        "Local file system (source code files)",
+        "In-memory or file-based caches for scan results and concepts"
+      ],
+      "backgroundJobs": [
+        "Repository scanning and symbol extraction tasks",
+        "Concept generation and publishing jobs"
+      ],
+      "deploymentTargets": [
+        "Local development environments",
+        "Cloud environments supporting Node.js (e.g., AWS, GCP)"
+      ]
+    },
+    "modules": {
+      "boundaries": [
+        "core/extractSnippets.ts",
+        "core/generateConcepts.ts",
+        "core/llm.ts",
+        "core/renderMarkdown.ts",
+        "core/scanRepo.ts",
+        "core/tsSymbols.ts",
+        "types/model.ts"
+      ],
+      "responsibilities": [
+        "extractSnippets: Extracts code snippets from source files",
+        "generateConcepts: Coordinates concept analysis, generation, and publishing",
+        "llm: Interfaces with large language models for code understanding and generation",
+        "renderMarkdown: Converts concept data into markdown format for documentation",
+        "scanRepo: Scans repositories to gather file and symbol information",
+        "tsSymbols: Extracts and processes TypeScript symbols and metadata",
+        "types/model: Defines domain models representing concepts, relationships, and project metadata"
+      ],
+      "domainFocus": "Software codebase conceptual modeling and documentation generation"
+    }
+  },
+  "concepts": [
+    {
+      "metadata": {
+        "name": "ConceptModel",
+        "type": "entity",
+        "boundedContext": "Software Codebase Conceptual Modeling",
+        "aggregateRoot": true,
+        "criticality": "core"
+      },
+      "definition": {
+        "shortDescription": "Represents the conceptual model extracted from a codebase, including definitions, relationships, and metadata about software concepts.",
+        "ubiquitousLanguage": "ConceptModel refers specifically to the structured representation of software concepts derived from source code analysis. Synonyms like 'Conceptual Model' or 'Code Concept Model' may be used interchangeably, but exclude unrelated models such as data models or UML diagrams."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "definitions",
+            "type": "ConceptDefinition[]",
+            "description": "The set of conceptual definitions extracted from the codebase."
+          },
+          {
+            "name": "relationships",
+            "type": "ConceptRelationship[]",
+            "description": "Describes how concepts relate to each other within the model."
+          },
+          {
+            "name": "metadata",
+            "type": "ConceptMetadata",
+            "description": "Metadata about the conceptual model including name, type, bounded context, and criticality."
+          },
+          {
+            "name": "lifecycle",
+            "type": "ConceptLifecycle",
+            "description": "Optional lifecycle states and transitions relevant to the conceptual model."
+          },
+          {
+            "name": "invariants",
+            "type": "ConceptInvariant[]",
+            "description": "Business rules and constraints that the conceptual model must satisfy."
+          },
+          {
+            "name": "commands",
+            "type": "ConceptCommand[]",
+            "description": "Actions that can be performed to modify or interact with the conceptual model."
+          },
+          {
+            "name": "events",
+            "type": "ConceptEvent[]",
+            "description": "Domain events emitted by the conceptual model when significant changes occur."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Aggregates multiple ConceptDefinitions representing individual software concepts."
+          },
+          {
+            "description": "Maintains relationships among concepts to represent dependencies and associations."
+          },
+          {
+            "description": "Interacts with external systems such as LLM APIs for concept generation and Concept Viewer for presentation."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "scanned",
+          "conceptsGenerated",
+          "published"
+        ],
+        "validTransitions": [
+          "initialized → scanned",
+          "scanned → conceptsGenerated",
+          "conceptsGenerated → published"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each ConceptModel must have a unique name within its bounded context.",
+          "notes": "Ensures unambiguous identification of conceptual models."
+        },
+        {
+          "rule": "Concept relationships must not form cyclic dependencies.",
+          "notes": "Prevents infinite loops and inconsistent conceptual graphs."
+        },
+        {
+          "rule": "All referenced concepts in relationships must exist within the ConceptModel.",
+          "notes": "Maintains model integrity and completeness."
+        }
+      ],
+      "commands": [
+        {
+          "name": "ScanRepository",
+          "description": "Initiates scanning of the source code repository to extract raw data for concept generation."
+        },
+        {
+          "name": "GenerateConcepts",
+          "description": "Processes scanned data using language models to produce conceptual definitions and relationships."
+        },
+        {
+          "name": "PublishConceptModel",
+          "description": "Publishes the generated conceptual model to the Concept Viewer or other documentation platforms."
+        },
+        {
+          "name": "UpdateConceptModel",
+          "description": "Applies incremental changes or refreshes to the existing conceptual model."
+        }
+      ],
+      "events": [
+        {
+          "name": "RepositoryScanned",
+          "description": "Emitted after the source code repository has been successfully scanned."
+        },
+        {
+          "name": "ConceptsGenerated",
+          "description": "Emitted when conceptual definitions and relationships have been generated."
+        },
+        {
+          "name": "ConceptModelPublished",
+          "description": "Emitted after the conceptual model has been published for consumption."
+        },
+        {
+          "name": "ConceptModelUpdated",
+          "description": "Emitted when the conceptual model is updated with new or changed information."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "Concept model types and interfaces",
+          "path": "src/types/model.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Concept generation logic",
+          "path": "core/generateConcepts.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Repository scanning service",
+          "path": "core/scanRepo.ts"
+        },
+        {
+          "kind": "file",
+          "label": "LLM integration for concept extraction",
+          "path": "core/llm.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Markdown rendering for concept documentation",
+          "path": "core/renderMarkdown.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "FileSnippet",
+        "type": "Value Object",
+        "boundedContext": "Code Analysis",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "A snippet of source code extracted from a file, used as input for concept extraction and analysis.",
+        "ubiquitousLanguage": "FileSnippet refers specifically to a small portion of source code text taken from a file, identified by its relative path within the repository. It is immutable and has no identity beyond its value."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "relativePath",
+            "type": "string",
+            "description": "The file path relative to the root of the repository, identifying the source file from which the snippet was extracted."
+          },
+          {
+            "name": "snippet",
+            "type": "string",
+            "description": "The actual source code text extracted from the file, limited in length."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Associated with a source file identified by relativePath within a scanned repository."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "The snippet must be a substring of the source file content identified by relativePath.",
+          "notes": "Ensures snippet integrity and traceability."
+        },
+        {
+          "rule": "The snippet length must not exceed the configured maximum characters per file (e.g., 2000).",
+          "notes": "Prevents overly large snippets that could impact performance."
+        }
+      ],
+      "commands": [],
+      "events": [],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "FileSnippet interface and extractSnippets function",
+          "path": "src/core/extractSnippets.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "SymbolInfo",
+        "type": "Value Object",
+        "boundedContext": "Software Codebase Conceptual Modeling",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Information about a TypeScript symbol extracted from source code, including its kind and metadata.",
+        "ubiquitousLanguage": "SymbolInfo represents a code symbol such as a class, interface, function, or variable in a TypeScript codebase. Synonyms like 'code symbol metadata' or 'symbol descriptor' may be used, but 'SymbolInfo' is the preferred term. It excludes runtime symbol instances or non-TypeScript language symbols."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "description": "The identifier name of the symbol."
+          },
+          {
+            "name": "kind",
+            "type": "SymbolKind",
+            "description": "The category of the symbol, e.g., class, interface, function."
+          },
+          {
+            "name": "filePath",
+            "type": "string",
+            "description": "Absolute path to the source file containing the symbol."
+          },
+          {
+            "name": "relativePath",
+            "type": "string",
+            "description": "Path to the source file relative to the repository root."
+          },
+          {
+            "name": "isExported",
+            "type": "boolean",
+            "description": "Indicates if the symbol is exported from its module."
+          },
+          {
+            "name": "isDefaultExport",
+            "type": "boolean",
+            "description": "Indicates if the symbol is the default export of its module."
+          },
+          {
+            "name": "line",
+            "type": "number",
+            "description": "1-based line number where the symbol is declared."
+          },
+          {
+            "name": "column",
+            "type": "number",
+            "description": "1-based column number where the symbol is declared."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "SymbolInfo is associated with a source code file within a repository."
+          },
+          {
+            "description": "SymbolInfo instances collectively represent the conceptual model of a codebase's symbols."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "The 'name' field must be a non-empty string.",
+          "notes": "A symbol must have a valid identifier name."
+        },
+        {
+          "rule": "The 'kind' field must be one of the predefined SymbolKind values: 'class', 'interface', 'typeAlias', 'enum', 'function', or 'variable'."
+        },
+        {
+          "rule": "The 'filePath' must be an absolute path pointing to a valid source file.",
+          "notes": "Ensures traceability to source code."
+        },
+        {
+          "rule": "'line' and 'column' must be positive integers representing 1-based positions within the source file."
+        }
+      ],
+      "commands": [],
+      "events": [],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "SymbolInfo Type and Extraction Logic",
+          "path": "src/core/tsSymbols.ts"
+        },
+        {
+          "kind": "symbol",
+          "label": "SymbolInfo Interface",
+          "path": "src/core/tsSymbols.ts#SymbolInfo"
+        },
+        {
+          "kind": "symbol",
+          "label": "SymbolKind Type",
+          "path": "src/core/tsSymbols.ts#SymbolKind"
+        },
+        {
+          "kind": "symbol",
+          "label": "extractSymbolsFromSource Function",
+          "path": "src/core/tsSymbols.ts#extractSymbolsFromSource"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "ScanResult",
+        "type": "Value Object",
+        "boundedContext": "Codebase Analysis",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "The result of scanning a source code repository, containing information about discovered source files relevant for further analysis.",
+        "ubiquitousLanguage": "ScanResult refers specifically to the collection of file metadata extracted from a repository scan. It excludes runtime or dynamic analysis data."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "files",
+            "type": "FileInfo[]",
+            "description": "An array of FileInfo objects representing each source file found during the scan."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Contains multiple FileInfo value objects representing individual source files."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "created"
+        ],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "Each FileInfo must have a valid absolute path within the scanned repository.",
+          "notes": "Ensures file references are consistent and resolvable."
+        },
+        {
+          "rule": "Files included must have extensions among the supported set (e.g., .ts, .tsx, .js, .jsx).",
+          "notes": "Filters out irrelevant files to focus analysis on source code."
+        },
+        {
+          "rule": "Files matching .gitignore patterns are excluded from the scan result.",
+          "notes": "Respects repository ignore rules to avoid scanning unwanted files."
+        }
+      ],
+      "commands": [],
+      "events": [],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "ScanResult and FileInfo interfaces",
+          "path": "src/core/scanRepo.ts"
+        },
+        {
+          "kind": "file",
+          "label": "scanRepo function implementing ScanResult generation",
+          "path": "src/core/scanRepo.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "LLMMessage",
+        "type": "Value Object",
+        "boundedContext": "Large Language Model Integration",
+        "aggregateRoot": false
+      },
+      "definition": {
+        "shortDescription": "Represents a message exchanged with the Large Language Model API, encapsulating the role and content of the message.",
+        "ubiquitousLanguage": "LLMMessage refers specifically to the structured message format used in communication with the LLM API. Roles are limited to 'system' or 'user'. It excludes any other message types or metadata beyond role and content."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "role",
+            "type": "'system' | 'user'",
+            "description": "Defines the origin or intent of the message in the LLM conversation context."
+          },
+          {
+            "name": "content",
+            "type": "string",
+            "description": "The textual content of the message sent to or received from the LLM."
+          }
+        ],
+        "relationships": []
+      },
+      "lifecycle": {
+        "states": [],
+        "validTransitions": []
+      },
+      "invariants": [
+        {
+          "rule": "role must be either 'system' or 'user'",
+          "notes": "Ensures message role consistency for LLM API compatibility."
+        },
+        {
+          "rule": "content must be a non-empty string",
+          "notes": "Messages must contain meaningful textual content."
+        }
+      ],
+      "commands": [],
+      "events": [],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "LLMMessage interface definition",
+          "path": "src/core/llm.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "ConceptSheet",
+        "type": "entity",
+        "boundedContext": "Software Codebase Conceptual Modeling and Documentation Generation",
+        "aggregateRoot": true,
+        "criticality": "core"
+      },
+      "definition": {
+        "shortDescription": "A structured document representing a detailed conceptual description of a domain concept, including metadata and relationships.",
+        "ubiquitousLanguage": "ConceptSheet refers specifically to the structured representation of domain concepts within the project, synonymous with 'concept document' or 'concept model sheet'. It excludes informal notes or unstructured documentation."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "metadata",
+            "type": "ConceptMetadata",
+            "description": "Contains the core identifying information about the concept such as name, type, bounded context, aggregate root status, and criticality."
+          },
+          {
+            "name": "definition",
+            "type": "ConceptDefinition",
+            "description": "Provides a short description and optionally the ubiquitous language for the concept."
+          },
+          {
+            "name": "structure.fields",
+            "type": "ConceptStructureField[]",
+            "description": "Domain-relevant properties that define the conceptual structure of the concept."
+          },
+          {
+            "name": "structure.relationships",
+            "type": "ConceptRelationship[]",
+            "description": "Describes meaningful domain relationships to other concepts."
+          },
+          {
+            "name": "lifecycle",
+            "type": "ConceptLifecycle",
+            "description": "Optional lifecycle states and valid transitions for the concept."
+          },
+          {
+            "name": "invariants",
+            "type": "ConceptInvariant[]",
+            "description": "Non-negotiable business rules that must always hold true for the concept."
+          },
+          {
+            "name": "commands",
+            "type": "ConceptCommand[]",
+            "description": "Actions that modify or interact with the concept."
+          },
+          {
+            "name": "events",
+            "type": "ConceptEvent[]",
+            "description": "Domain events emitted by the concept when significant changes occur."
+          },
+          {
+            "name": "implementation",
+            "type": "ImplementationLink[]",
+            "description": "References to code files, symbols, or URLs implementing or defining the concept."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "ConceptSheet aggregates multiple domain concepts and their metadata into a single structured document."
+          },
+          {
+            "description": "ConceptSheet is used by Concept Generation Service to produce conceptual documentation."
+          },
+          {
+            "description": "ConceptSheet is consumed by the Concept Viewer UI for rendering conceptual insights."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "draft",
+          "reviewed",
+          "published",
+          "archived"
+        ],
+        "validTransitions": [
+          "draft → reviewed",
+          "reviewed → published",
+          "published → archived",
+          "archived → draft"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "Each ConceptSheet must have a unique name within its bounded context.",
+          "notes": "Ensures unambiguous identification of concepts."
+        },
+        {
+          "rule": "The metadata.type must be one of the predefined ConceptType values.",
+          "notes": "Maintains consistency in concept classification."
+        },
+        {
+          "rule": "If aggregateRoot is true, the ConceptSheet must define invariants controlling the cluster.",
+          "notes": "Preserves domain integrity boundaries."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateConceptSheet",
+          "description": "Initialize a new ConceptSheet with metadata and definition."
+        },
+        {
+          "name": "UpdateConceptSheet",
+          "description": "Modify fields, relationships, or lifecycle state of an existing ConceptSheet."
+        },
+        {
+          "name": "PublishConceptSheet",
+          "description": "Mark the ConceptSheet as published, making it available for consumption."
+        },
+        {
+          "name": "ArchiveConceptSheet",
+          "description": "Archive the ConceptSheet to indicate it is no longer active."
+        }
+      ],
+      "events": [
+        {
+          "name": "ConceptSheetCreated",
+          "description": "Emitted when a new ConceptSheet is created."
+        },
+        {
+          "name": "ConceptSheetUpdated",
+          "description": "Emitted when an existing ConceptSheet is updated."
+        },
+        {
+          "name": "ConceptSheetPublished",
+          "description": "Emitted when a ConceptSheet is published."
+        },
+        {
+          "name": "ConceptSheetArchived",
+          "description": "Emitted when a ConceptSheet is archived."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "ConceptSheet Type Definitions",
+          "path": "src/types/model.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Concept Generation Logic",
+          "path": "core/generateConcepts.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Concept Rendering to Markdown",
+          "path": "core/renderMarkdown.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Concept Viewer UI",
+          "path": "ConceptViewer (web or markdown-based UI)"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "ConceptDiscoveryResult",
+        "type": "value_object",
+        "boundedContext": "Concept Generation",
+        "aggregateRoot": false,
+        "criticality": "core"
+      },
+      "definition": {
+        "shortDescription": "The outcome of the concept discovery process, containing candidate concepts and analysis results.",
+        "ubiquitousLanguage": "Also referred to as discovery result or concept extraction output; excludes raw source code or unrelated metadata."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "candidateConcepts",
+            "type": "ConceptCandidate[]",
+            "description": "A collection of candidate concepts identified during analysis, each representing a potential domain concept extracted from the source code."
+          },
+          {
+            "name": "analysisResults",
+            "type": "object",
+            "description": "Aggregated metadata and insights produced by the discovery process, such as symbol relationships, concept confidence scores, or summary statistics."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Contains multiple ConceptCandidate instances representing discovered concepts."
+          },
+          {
+            "description": "Produced by the Concept Generation Service after analyzing source code via the Code Analysis Service."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "processing",
+          "completed",
+          "failed"
+        ],
+        "validTransitions": [
+          "initialized → processing",
+          "processing → completed",
+          "processing → failed"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "candidateConcepts must not be empty upon completion",
+          "notes": "A successful discovery result should contain at least one candidate concept."
+        },
+        {
+          "rule": "analysisResults must accurately reflect the candidateConcepts",
+          "notes": "Consistency between concepts and their analysis metadata is required."
+        }
+      ],
+      "commands": [
+        {
+          "name": "CreateConceptDiscoveryResult",
+          "description": "Instantiate a new ConceptDiscoveryResult with candidate concepts and analysis data."
+        }
+      ],
+      "events": [
+        {
+          "name": "ConceptDiscoveryCompleted",
+          "description": "Emitted when the concept discovery process finishes successfully."
+        },
+        {
+          "name": "ConceptDiscoveryFailed",
+          "description": "Emitted when the concept discovery process encounters an error."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "ConceptCandidate and ConceptDiscoveryResult types",
+          "path": "src/types/model.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Concept generation logic",
+          "path": "core/generateConcepts.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Concept discovery orchestration",
+          "path": "core/scanRepo.ts"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "name": "ProjectOverview",
+        "type": "value_object",
+        "boundedContext": "Codebase Analysis and Conceptual Modeling",
+        "aggregateRoot": false,
+        "criticality": "core"
+      },
+      "definition": {
+        "shortDescription": "Metadata and summary information about the analyzed project, including conceptual insights and registry data.",
+        "ubiquitousLanguage": "ProjectOverview refers specifically to the encapsulated summary and metadata describing a software project under analysis, excluding runtime or operational data."
+      },
+      "structure": {
+        "fields": [
+          {
+            "name": "summary",
+            "type": "string",
+            "description": "A brief textual description of what the analyzed project does."
+          },
+          {
+            "name": "conceptualInsights",
+            "type": "string[]",
+            "description": "Key conceptual insights extracted from the project analysis."
+          },
+          {
+            "name": "registryData",
+            "type": "object",
+            "description": "Metadata registry information about the project such as dependencies, language usage, and symbol counts."
+          }
+        ],
+        "relationships": [
+          {
+            "description": "Aggregates data from code analysis results, symbol extraction, and LLM-generated insights."
+          },
+          {
+            "description": "Consumed by Concept Generation Service and Concept Viewer UI to present project documentation."
+          }
+        ]
+      },
+      "lifecycle": {
+        "states": [
+          "initialized",
+          "analyzed",
+          "enriched",
+          "published"
+        ],
+        "validTransitions": [
+          "initialized → analyzed",
+          "analyzed → enriched",
+          "enriched → published"
+        ]
+      },
+      "invariants": [
+        {
+          "rule": "summary must always be a non-empty string",
+          "notes": "Ensures meaningful project description is always present."
+        },
+        {
+          "rule": "conceptualInsights must reflect the latest analysis results",
+          "notes": "Prevents stale or inconsistent conceptual data."
+        }
+      ],
+      "commands": [
+        {
+          "name": "GenerateProjectOverview",
+          "description": "Triggers analysis and generation of the project overview metadata and insights."
+        },
+        {
+          "name": "UpdateProjectOverview",
+          "description": "Updates the overview with new analysis data or conceptual insights."
+        }
+      ],
+      "events": [
+        {
+          "name": "ProjectOverviewGenerated",
+          "description": "Emitted when a new project overview has been successfully generated."
+        },
+        {
+          "name": "ProjectOverviewUpdated",
+          "description": "Emitted when the project overview metadata or insights are updated."
+        }
+      ],
+      "implementation": [
+        {
+          "kind": "file",
+          "label": "ProjectOverview type definition",
+          "path": "src/types/model.ts"
+        },
+        {
+          "kind": "file",
+          "label": "Project overview generation logic",
+          "path": "src/core/generateConcepts.ts"
+        },
+        {
+          "kind": "symbol",
+          "label": "generateProjectOverview function",
+          "path": "src/core/generateConcepts.ts"
+        }
+      ]
+    }
+  ]
+}

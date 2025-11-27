@@ -85,6 +85,7 @@ export interface ConceptSheet {
 export interface ConceptCandidate {
   name: string;
   type: ConceptType;
+  criticality: 'core' | 'supporting' | 'experimental';
   description: string;
   references: ConceptReference[]; // precise references to relevant code locations
 }
@@ -122,3 +123,23 @@ export interface ConceptModel {
   projectOverview?: ProjectOverview;
   concepts: ConceptSheet[];
 }
+
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  path: string;
+  updatedAt: string;
+}
+
+export interface ProjectRegistry {
+  projects: ProjectEntry[];
+}
+
+export interface ContextRationalization {
+  contexts: {
+    name: string;
+    description: string;
+    conceptNames: string[];
+  }[];
+}
+

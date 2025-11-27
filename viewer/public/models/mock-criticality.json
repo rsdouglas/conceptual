@@ -1,0 +1,148 @@
+{
+    "repoRoot": "/mock/repo",
+    "generatedAt": "2025-11-26T20:00:00.000Z",
+    "projectOverview": {
+        "summary": "A mock project to demonstrate the Progressive Understanding UI.",
+        "systemContext": {
+            "externalSystems": [
+                {
+                    "name": "Stripe",
+                    "direction": "outbound"
+                },
+                {
+                    "name": "OpenAI",
+                    "direction": "bidirectional"
+                }
+            ],
+            "userRoles": [
+                {
+                    "name": "Admin"
+                },
+                {
+                    "name": "Customer"
+                }
+            ],
+            "keyDependencies": [
+                "React",
+                "Node.js"
+            ]
+        },
+        "containers": {
+            "services": [
+                "API Server",
+                "Worker"
+            ],
+            "userInterfaces": [
+                "Web App",
+                "Mobile App"
+            ],
+            "dataStores": [
+                "PostgreSQL",
+                "Redis"
+            ],
+            "backgroundJobs": [
+                "Email Sender"
+            ],
+            "deploymentTargets": [
+                "AWS"
+            ]
+        },
+        "modules": {
+            "boundaries": [
+                "Auth",
+                "Billing",
+                "Core"
+            ],
+            "responsibilities": [
+                "Authentication",
+                "Payment processing",
+                "Business logic"
+            ],
+            "domainFocus": "E-commerce"
+        }
+    },
+    "concepts": [
+        {
+            "metadata": {
+                "name": "Order",
+                "type": "aggregate_root",
+                "criticality": "core",
+                "boundedContext": "Sales",
+                "aggregateRoot": true
+            },
+            "definition": {
+                "shortDescription": "Represents a customer purchase."
+            },
+            "structure": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string"
+                    },
+                    {
+                        "name": "total",
+                        "type": "number"
+                    }
+                ],
+                "relationships": [
+                    {
+                        "description": "Belongs to a User"
+                    }
+                ]
+            }
+        },
+        {
+            "metadata": {
+                "name": "Product",
+                "type": "entity",
+                "criticality": "core",
+                "boundedContext": "Sales"
+            },
+            "definition": {
+                "shortDescription": "An item available for sale."
+            },
+            "structure": {
+                "fields": [],
+                "relationships": []
+            }
+        },
+        {
+            "metadata": {
+                "name": "User",
+                "type": "entity",
+                "criticality": "supporting",
+                "boundedContext": "Identity"
+            },
+            "definition": {
+                "shortDescription": "A registered user of the platform."
+            },
+            "structure": {
+                "fields": [],
+                "relationships": [
+                    {
+                        "description": "Places Orders"
+                    }
+                ]
+            }
+        },
+        {
+            "metadata": {
+                "name": "AI Recommendation",
+                "type": "domain_service",
+                "criticality": "experimental",
+                "boundedContext": "Intelligence"
+            },
+            "definition": {
+                "shortDescription": "Experimental engine for suggesting products."
+            },
+            "structure": {
+                "fields": [],
+                "relationships": [
+                    {
+                        "description": "Recommends Products based on User history"
+                    }
+                ]
+            }
+        }
+    ]
+}
