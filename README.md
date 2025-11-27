@@ -59,9 +59,11 @@ A modern Tailwind-powered viewer:
 - Multiple diagram perspectives
 - Direct links to source code
 
-### ⚡ Fast and Local
-Works entirely offline.
-No data or source code leaves your machine.
+### ⚡ Privacy-First Analysis
+- **Local processing** - Code scanning and analysis runs locally
+- **Configurable LLMs** - Send only extracted symbols and code snippets to your chosen LLM provider
+- **No persistent storage** - No data is stored on external servers beyond LLM API calls
+- **Your API keys** - All LLM interactions use your configured API keys
 
 ---
 
@@ -89,6 +91,8 @@ This will:
 4. Generate focused diagram views
 5. Write `docs/domain/concept-model.json`
 6. Publish to viewer (if available)
+
+For full CLI options, environment variables, and advanced usage, see [conceptual/README.md](conceptual/README.md).
 
 ### Run the viewer
 

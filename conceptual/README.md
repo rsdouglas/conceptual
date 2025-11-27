@@ -50,18 +50,14 @@ The view generation phase creates 3-7 focused diagram views per model:
 
 Views only reference existing concepts—no invention, pure curation.
 
-## Installation
+## Setup
 
-```bash
-npm install -g conceptgen
-```
-
-Or use directly from source:
+Since this is currently a local development package:
 
 ```bash
 cd conceptual
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
 
 ## Usage
@@ -69,7 +65,7 @@ npm run build
 ### Basic Analysis
 
 ```bash
-conceptgen analyze /path/to/repo --out ./output
+pnpm dev analyze /path/to/repo --out ./output
 ```
 
 This will:
@@ -83,7 +79,7 @@ This will:
 ### Options
 
 ```bash
-conceptgen analyze [path] [options]
+pnpm dev analyze [path] [options]
 
 Arguments:
   path                      Path to repository root (default: ".")
@@ -102,7 +98,7 @@ Options:
 ### Verbose Mode (See the Prompts)
 
 ```bash
-conceptgen analyze /path/to/repo --verbose
+pnpm dev analyze /path/to/repo --verbose
 ```
 
 Shows all LLM prompts:
@@ -197,10 +193,10 @@ ConceptGen can publish models to a viewer application for interactive exploratio
 
 ```bash
 # Auto-publish (default)
-conceptgen analyze /path/to/repo
+pnpm dev analyze /path/to/repo
 
 # Skip publishing
-conceptgen analyze /path/to/repo --no-publish
+pnpm dev analyze /path/to/repo --no-publish
 ```
 
 Published models appear in `../viewer/public/models/` with a registry entry.
@@ -274,13 +270,13 @@ This mirrors how humans understand systems.
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Build
-npm run build
+pnpm build
 
 # Run from source
-npm run dev -- analyze /path/to/repo --verbose
+pnpm dev -- analyze /path/to/repo --verbose
 
 # TypeScript compilation
 npx tsc

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Model JSON files (except demo.json)
+public/models/*.json
+!public/models/demo.json

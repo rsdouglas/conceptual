@@ -117,7 +117,7 @@ async function enrichProjectModels(
       }
 
       const snippets = extractSnippets(relevantFiles);
-      const prompt = buildConceptEnrichmentPrompt(project, model, concept, snippets);
+      const prompt = buildConceptEnrichmentPrompt(project, model, concept, snippets, allRelationships);
 
       if (verbose) {
         console.log(`\n📝 Enrichment Prompt for "${concept.label}":`);
@@ -788,19 +788,51 @@ function buildConceptEnrichmentPrompt(
   model: ConceptModel,
   concept: Concept,
   snippets: { relativePath: string; snippet: string }[],
+  existingRelationships: Relationship[],
 ): string {
   const filesText = snippets
     .map((s) => `// File: ${s.relativePath}\n${s.snippet}`)
     .join("\n\n");
+
+  // Filter out the current concept to show "other" potential relationship targets
+  const otherConcepts = model.concepts
+    .filter((c) => c.id !== concept.id)
+    .map((c) => ({
+      id: c.id,
+      label: c.label,
+      description: c.description,
+    }));
+
+  const contextText = otherConcepts.length > 0
+    ? JSON.stringify(otherConcepts, null, 2)
+    : "(No other concepts found in this model yet)";
+
+  const relationshipsText = existingRelationships.length > 0
+    ? existingRelationships.map(r => `- ${r.from} ${r.phrase} ${r.to} (${r.category})`).join('\n')
+    : "(No relationships established yet)";
 
   return `
 We are analyzing the concept "${concept.label}" in the model "${model.title}" of project "${project.name}".
 
 Description: ${concept.description}
 
+## Model Context (Other Concepts)
+
+Here are other concepts already identified in this model. You should use these as targets for relationships where appropriate.
+
+${contextText}
+
+## Model Context (Existing Relationships)
+
+Here are relationships that have already been established in this model. Use this to understand how this concept fits into the broader picture.
+
+${relationshipsText}
+
 Based on the following code snippets, provide a detailed definition of this concept, including:
 1. Aliases (synonyms used in code or comments).
 2. Relationships to other concepts (e.g. "Order has line items", "User places Order").
+   - **CRITICAL**: Prefer linking to the "Other Concepts" listed above if they match.
+   - You may also link to concepts that *should* exist but aren't listed yet, if the code strongly implies them.
 3. Rules/Constraints (e.g. "Order must have at least one item").
 4. Lifecycles (if the concept has states, e.g. Pending -> Shipped).
 

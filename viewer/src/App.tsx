@@ -20,11 +20,20 @@ import {
 import type {
   ConceptModel,
   ConceptProject,
+  ProjectEntry,
   ProjectRegistry,
   StoryView,
 } from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
 import { DiagramView } from './components/DiagramView';
+
+// Hard-coded demo project that always appears in the list
+const DEMO_PROJECT: ProjectEntry = {
+  id: "demo",
+  name: "Demo: Data Request SlackBot",
+  path: "models/demo.json",
+  updatedAt: "2025-11-27T11:45:09.057Z"
+};
 
 function App() {
   const [registry, setRegistry] = useState<ProjectRegistry | null>(null);
@@ -45,17 +54,21 @@ function App() {
     fetch(`${import.meta.env.BASE_URL}models/registry.json`)
       .then(res => res.json())
       .then((data: ProjectRegistry) => {
-        setRegistry(data);
-        if (data.projects.length > 0) {
-          setCurrentProjectId(data.projects[0].id);
-        } else {
-          setLoading(false);
-        }
+        // Always prepend the demo project to the registry
+        const registryWithDemo: ProjectRegistry = {
+          projects: [DEMO_PROJECT, ...data.projects]
+        };
+        setRegistry(registryWithDemo);
+        setCurrentProjectId(DEMO_PROJECT.id);
       })
       .catch(err => {
         console.error(err);
-        setError('Failed to load project registry.');
-        setLoading(false);
+        // If registry fails to load, just show the demo project
+        const demoOnlyRegistry: ProjectRegistry = {
+          projects: [DEMO_PROJECT]
+        };
+        setRegistry(demoOnlyRegistry);
+        setCurrentProjectId(DEMO_PROJECT.id);
       });
   }, []);
 
