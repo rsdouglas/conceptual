@@ -4,6 +4,11 @@
 
 Conceptual analyzes your codebase and generates rich, Dubberly-style concept models automatically using LLM-powered analysis. It discovers domain concepts, relationships, rules, lifecycles, and creates focused diagram views—helping teams understand and communicate system architecture.
 
+> [!NOTE]
+> **🎬 [Live Demo Available](https://rsdouglas.github.io/conceptual/)** - See Conceptual in action with an interactive example!
+>
+> **🌐 [Visit itsconceptual.com](https://itsconceptual.com)** - Learn more about Conceptual and its features
+
 ## What is a Dubberly-style Concept Model?
 
 [Hugh Dubberly's concept modeling approach](http://www.dubberly.com/concept-maps) focuses on visualizing **domain concepts** (things, activities, roles, states, events) and their **relationships**, rather than technical implementation details.
