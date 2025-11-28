@@ -1,16 +1,16 @@
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react';
 
 import * as d3 from 'd3';
 import { ArrowLeft } from 'lucide-react';
 
 import type {
-  ConceptModel,
-  ModelView,
+    ConceptModel,
+    ModelView,
 } from '../../../conceptual/src/types/model';
 import { buildDiagramGraph } from '../utils/diagramLayout';
 import { NodeDetailPanel } from './NodeDetailPanel';
@@ -19,6 +19,8 @@ interface Props {
     view: ModelView;
     model: ConceptModel;
     onBack: () => void;
+    selectedConceptId?: string | null;
+    onSelectConcept?: (id: string | null) => void;
 }
 
 interface Node extends d3.SimulationNodeDatum {
@@ -34,9 +36,20 @@ interface Link extends d3.SimulationLinkDatum<Node> {
     target: Node;
 }
 
-export function DiagramView({ view, model, onBack }: Props) {
+export function DiagramView({ view, model, onBack, selectedConceptId, onSelectConcept }: Props) {
     const svgRef = useRef<SVGSVGElement>(null);
-    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+    // Use internal state if no external state is provided (backward compatibility)
+    const [internalSelectedNodeId, setInternalSelectedNodeId] = useState<string | null>(null);
+
+    const selectedNodeId = selectedConceptId !== undefined ? selectedConceptId : internalSelectedNodeId;
+
+    const handleNodeSelect = (node: Node | null) => {
+        if (onSelectConcept) {
+            onSelectConcept(node ? node.id : null);
+        } else {
+            setInternalSelectedNodeId(node ? node.id : null);
+        }
+    };
 
     const { nodes, links } = useMemo(() => {
         const { nodes: graphNodes, edges } = buildDiagramGraph(view, model);
@@ -105,14 +118,14 @@ export function DiagramView({ view, model, onBack }: Props) {
         defs.append('marker')
             .attr('id', 'arrowhead')
             .attr('viewBox', '0 -5 10 10')
-            .attr('refX', 13)
+            .attr('refX', 47) // Position at node edge (radius 45) + small buffer
             .attr('refY', 0)
-            .attr('markerWidth', 6)
-            .attr('markerHeight', 6)
+            .attr('markerWidth', 6) // Increased from 6 for better visibility
+            .attr('markerHeight', 6) // Increased from 6 for better visibility
             .attr('orient', 'auto')
             .append('path')
             .attr('d', 'M0,-5L10,0L0,5')
-            .attr('fill', '#94a3b8');
+            .attr('fill', '#64748b'); // Darker slate-500 for better visibility
 
         // Create force simulation (only if we have valid nodes)
         if (!nodes.length) return;
@@ -134,8 +147,8 @@ export function DiagramView({ view, model, onBack }: Props) {
             .selectAll('line')
             .data(links)
             .enter().append('line')
-            .attr('stroke', '#94a3b8')
-            .attr('stroke-width', 1.5)
+            .attr('stroke', '#64748b') // Darker to match arrow color
+            .attr('stroke-width', 2) // Slightly thicker for better visibility
             .attr('marker-end', 'url(#arrowhead)');
 
         // Create link labels
@@ -160,8 +173,8 @@ export function DiagramView({ view, model, onBack }: Props) {
             .enter().append('circle')
             .attr('r', 45)
             .attr('fill', d => getCategoryColor(d.category))
-            .attr('stroke', d => selectedNode?.id === d.id ? '#3b82f6' : '#fff')
-            .attr('stroke-width', d => selectedNode?.id === d.id ? 4 : 2)
+            .attr('stroke', d => selectedNodeId === d.id ? '#3b82f6' : '#fff')
+            .attr('stroke-width', d => selectedNodeId === d.id ? 4 : 2)
             .call(d3.drag<SVGCircleElement, Node>()
                 .on('start', (event, d) => {
                     if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -180,7 +193,7 @@ export function DiagramView({ view, model, onBack }: Props) {
             )
             .on('click', (event, d) => {
                 event.stopPropagation();
-                setSelectedNode(d);
+                handleNodeSelect(d);
             });
 
         // Add labels
@@ -226,7 +239,9 @@ export function DiagramView({ view, model, onBack }: Props) {
         return () => {
             simulation.stop();
         };
-    }, [nodes, links, selectedNode]);
+    }, [nodes, links, selectedNodeId]);
+
+    const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
 
     return (
         <div className="h-full flex bg-white">
@@ -262,7 +277,7 @@ export function DiagramView({ view, model, onBack }: Props) {
                 {/* Diagram */}
                 <div
                     className="flex-1 bg-slate-50"
-                    onClick={() => setSelectedNode(null)}
+                    onClick={() => handleNodeSelect(null)}
                 >
                     <svg ref={svgRef} className="w-full h-full border border-slate-200"></svg>
                 </div>
@@ -276,7 +291,7 @@ export function DiagramView({ view, model, onBack }: Props) {
                     links={links}
                     model={model}
                     view={view}
-                    onClose={() => setSelectedNode(null)}
+                    onClose={() => handleNodeSelect(null)}
                 />
             )}
         </div>

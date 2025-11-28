@@ -23,9 +23,10 @@ import {
   scanRepo,
 } from './scanRepo.js';
 import {
-  extractSymbolsFromFiles,
   SymbolInfo,
 } from './tsSymbols.js';
+import { LanguageAdapter } from './languages/LanguageAdapter.js';
+import { TypeScriptAdapter } from './languages/typescript/TypeScriptAdapter.js';
 
 export interface AnalyzeOptions {
   repoRoot: string;
@@ -592,10 +593,25 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   const projectName = opts.projectName || path.basename(repoRoot);
 
   console.log(`🔍 Scanning repository: ${repoRoot} (Project: ${projectName})`);
-  const scan = await scanRepo(repoRoot);
-  console.log(`📁 Found ${scan.files.length} TypeScript/JavaScript files`);
 
-  const symbols: SymbolInfo[] = extractSymbolsFromFiles(repoRoot, scan.files);
+  // Initialize adapters
+  const adapters: LanguageAdapter[] = [new TypeScriptAdapter()];
+  const extensions = adapters.flatMap(a => a.extensions);
+
+  const scan = await scanRepo(repoRoot, extensions);
+  console.log(`📁 Found ${scan.files.length} files`);
+
+  // Extract symbols using adapters
+  const symbols: SymbolInfo[] = [];
+  for (const file of scan.files) {
+    const ext = path.extname(file.path);
+    const adapter = adapters.find(a => a.extensions.includes(ext));
+    if (adapter) {
+      const content = fs.readFileSync(file.path, 'utf8');
+      const fileSymbols = adapter.extractSymbols(content, file.path, file.relativePath);
+      symbols.push(...fileSymbols);
+    }
+  }
   console.log(`🔎 Extracted ${symbols.length} symbols from codebase`);
 
   const llmEnv: LLMEnv = {

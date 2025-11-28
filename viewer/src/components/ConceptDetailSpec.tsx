@@ -1,5 +1,6 @@
 import type { Concept, ConceptModel } from '../../../conceptual/src/types/model';
-import { ArrowLeft, GitCommit, ShieldAlert, Repeat, Tag, ExternalLink } from 'lucide-react';
+import { ArrowLeft, GitCommit, ShieldAlert, Repeat, Tag, ExternalLink, BookOpen, Network } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Props {
     concept: Concept;
@@ -8,6 +9,8 @@ interface Props {
 }
 
 export function ConceptDetailSpec({ concept, model, onBack }: Props) {
+    const navigate = useNavigate();
+
     // 1. Find Relationships
     const relationships = model.relationships.filter(r => r.from === concept.id || r.to === concept.id);
 
@@ -16,6 +19,15 @@ export function ConceptDetailSpec({ concept, model, onBack }: Props) {
 
     // 3. Find Lifecycles
     const lifecycle = model.lifecycles?.find(l => l.subjectConceptId === concept.id);
+
+    // 4. Find Backlinks - Story Views and Model Views that reference this concept
+    const referencingStoryViews = model.storyViews?.filter(sv =>
+        sv.steps.some(step => step.conceptIds.includes(concept.id))
+    ) || [];
+
+    const referencingModelViews = model.views?.filter(v =>
+        v.conceptIds.includes(concept.id)
+    ) || [];
 
     // Helper to resolve concept name from ID
     const getConceptLabel = (id: string) => {
@@ -175,6 +187,82 @@ export function ConceptDetailSpec({ concept, model, onBack }: Props) {
                                         {ref.note && <span className="text-xs text-slate-500 italic">{ref.note}</span>}
                                     </div>
                                 ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Referenced In - Backlinks to Story Views and Model Views */}
+                    {(referencingStoryViews.length > 0 || referencingModelViews.length > 0) && (
+                        <section>
+                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
+                                <GitCommit className="w-4 h-4" /> Referenced In
+                            </h3>
+
+                            <div className="space-y-4">
+                                {/* Story Views */}
+                                {referencingStoryViews.length > 0 && (
+                                    <div>
+                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Story Views</h4>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {referencingStoryViews.map(sv => {
+                                                const stepCount = sv.steps.filter(step => step.conceptIds.includes(concept.id)).length;
+                                                return (
+                                                    <button
+                                                        key={sv.id}
+                                                        onClick={() => navigate(`/model/${model.id}/story/${sv.id}`)}
+                                                        className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-indigo-300 transition-all text-left group"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <BookOpen className="w-4 h-4 text-indigo-600" />
+                                                            <div>
+                                                                <div className="text-sm font-medium text-slate-900 group-hover:text-indigo-700">
+                                                                    {sv.name}
+                                                                </div>
+                                                                {sv.description && (
+                                                                    <div className="text-xs text-slate-500 line-clamp-1">{sv.description}</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-slate-400">
+                                                            {stepCount} step{stepCount !== 1 ? 's' : ''}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Model Views */}
+                                {referencingModelViews.length > 0 && (
+                                    <div>
+                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Model Views</h4>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {referencingModelViews.map(v => (
+                                                <button
+                                                    key={v.id}
+                                                    onClick={() => navigate(`/model/${model.id}/view/${v.id}`)}
+                                                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-indigo-300 transition-all text-left group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <Network className="w-4 h-4 text-indigo-600" />
+                                                        <div>
+                                                            <div className="text-sm font-medium text-slate-900 group-hover:text-indigo-700">
+                                                                {v.name}
+                                                            </div>
+                                                            {v.description && (
+                                                                <div className="text-xs text-slate-500 line-clamp-1">{v.description}</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-xs text-slate-400">
+                                                        {v.conceptIds.length} concept{v.conceptIds.length !== 1 ? 's' : ''}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </section>
                     )}

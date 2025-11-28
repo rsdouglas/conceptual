@@ -2,6 +2,15 @@ import {
   useEffect,
   useState,
 } from 'react';
+import {
+  Routes,
+  Route,
+  useParams,
+  useSearchParams,
+  useNavigate,
+  Navigate,
+  useLocation,
+} from 'react-router-dom';
 
 import {
   Activity,
@@ -27,6 +36,7 @@ import type {
 } from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
 import { DiagramView } from './components/DiagramView';
+import { ResizableSidebar } from './components/ResizableSidebar';
 
 // Hard-coded demo project that always appears in the list
 const DEMO_PROJECT: ProjectEntry = {
@@ -40,13 +50,6 @@ function App() {
   const [registry, setRegistry] = useState<ProjectRegistry | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [project, setProject] = useState<ConceptProject | null>(null);
-
-  // Navigation State
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null);
-  const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
-  const [selectedStoryViewId, setSelectedStoryViewId] = useState<string | null>(null);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,21 +58,24 @@ function App() {
     fetch(`${import.meta.env.BASE_URL}models/registry.json`)
       .then(res => res.json())
       .then((data: ProjectRegistry) => {
-        // Always prepend the demo project to the registry
         const registryWithDemo: ProjectRegistry = {
           projects: [DEMO_PROJECT, ...data.projects]
         };
         setRegistry(registryWithDemo);
-        setCurrentProjectId(DEMO_PROJECT.id);
+        // Default to demo if no project selected
+        if (!currentProjectId) {
+          setCurrentProjectId(DEMO_PROJECT.id);
+        }
       })
       .catch(err => {
         console.error(err);
-        // If registry fails to load, just show the demo project
         const demoOnlyRegistry: ProjectRegistry = {
           projects: [DEMO_PROJECT]
         };
         setRegistry(demoOnlyRegistry);
-        setCurrentProjectId(DEMO_PROJECT.id);
+        if (!currentProjectId) {
+          setCurrentProjectId(DEMO_PROJECT.id);
+        }
       });
   }, []);
 
@@ -79,16 +85,12 @@ function App() {
     const entry = registry.projects.find(p => p.id === currentProjectId);
     if (!entry) return;
 
+    setLoading(true);
     fetch(`${import.meta.env.BASE_URL}${entry.path}`)
       .then(res => res.json())
       .then((data: ConceptProject) => {
         setProject(data);
         setLoading(false);
-        // Reset selection on project change
-        setSelectedModelId(null);
-        setSelectedConceptId(null);
-        setSelectedViewId(null);
-        setSelectedStoryViewId(null);
       })
       .catch(err => {
         console.error(err);
@@ -101,150 +103,242 @@ function App() {
   if (error) return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>;
   if (!project) return <div className="min-h-screen flex items-center justify-center text-slate-400">No project selected</div>;
 
-  // Derived state
-  const selectedModel = project.models?.find(m => m.id === selectedModelId);
-  const selectedConcept = selectedModel?.concepts?.find(c => c.id === selectedConceptId);
-  const selectedView = selectedModel?.views?.find(v => v.id === selectedViewId);
-  const selectedStoryView = selectedModel?.storyViews?.find(s => s.id === selectedStoryViewId);
-
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      <Sidebar
+        project={project}
+        registry={registry}
+        currentProjectId={currentProjectId}
+        setCurrentProjectId={setCurrentProjectId}
+      />
 
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-100">
-          <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold">
-            <Layers className="w-5 h-5" />
-            <span>Concept Explorer</span>
-          </div>
-
-          {/* Project Selector */}
-          <div className="relative">
-            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1 block">Project</label>
-            <select
-              value={currentProjectId || ''}
-              onChange={e => setCurrentProjectId(e.target.value)}
-              className="w-full text-sm p-2 bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            >
-              {registry?.projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Model List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          <div className="px-2 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Models (Contexts)
-          </div>
-          <button
-            onClick={() => { setSelectedModelId(null); setSelectedConceptId(null); }}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
-              ${!selectedModelId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
-            `}
-          >
-            <LayoutGrid className="w-4 h-4" />
-            Project Overview
-          </button>
-
-          {project.models.map(model => (
-            <div key={model.id}>
-              <button
-                onClick={() => {
-                  setSelectedModelId(model.id);
-                  setSelectedConceptId(null);
-                  setSelectedViewId(null);
-                  setSelectedStoryViewId(null);
-                }}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
-                  ${selectedModelId === model.id && !selectedViewId && !selectedStoryViewId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
-                `}
-              >
-                <Box className="w-4 h-4" />
-                <span className="truncate">{model.title}</span>
-              </button>
-
-              {/* Model Views section */}
-              {selectedModelId === model.id && model.views && model.views.length > 0 && (
-                <div className="ml-4 mt-1">
-                  <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Model Views
-                  </div>
-                  <div className="space-y-0.5 pb-2">
-                    {model.views.map(view => (
-                      <button
-                        key={view.id}
-                        onClick={() => {
-                          setSelectedViewId(view.id);
-                          setSelectedConceptId(null);
-                          setSelectedStoryViewId(null);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
-                          ${selectedViewId === view.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
-                        `}
-                      >
-                        <Network className="w-3.5 h-3.5" />
-                        <span className="truncate">{view.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Story Views section */}
-              {selectedModelId === model.id && model.storyViews && model.storyViews.length > 0 && (
-                <div className="ml-4 mt-1">
-                  <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Story Views
-                  </div>
-                  <div className="space-y-0.5 pb-2">
-                    {model.storyViews.map(storyView => (
-                      <button
-                        key={storyView.id}
-                        onClick={() => {
-                          setSelectedStoryViewId(storyView.id);
-                          setSelectedConceptId(null);
-                          setSelectedViewId(null);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
-                          ${selectedStoryViewId === storyView.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
-                        `}
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                        <span className="truncate">{storyView.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 overflow-y-auto">
-        {selectedConcept && selectedModel ? (
-          <ConceptDetailSpec concept={selectedConcept} model={selectedModel} onBack={() => setSelectedConceptId(null)} />
-        ) : selectedStoryView && selectedModel ? (
-          <StoryViewComponent storyView={selectedStoryView} model={selectedModel} onBack={() => setSelectedStoryViewId(null)} />
-        ) : selectedView && selectedModel ? (
-          <DiagramView view={selectedView} model={selectedModel} onBack={() => setSelectedViewId(null)} />
-        ) : selectedModel ? (
-          <ModelView model={selectedModel} onSelectConcept={setSelectedConceptId} />
-        ) : (
-          <ProjectDashboard project={project} onSelectModel={setSelectedModelId} />
-        )}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 overflow-y-auto relative">
+        <Routes>
+          <Route path="/" element={<ProjectDashboard project={project} />} />
+          <Route path="/model/:modelId" element={<ModelRoute project={project} />} />
+          <Route path="/model/:modelId/view/:viewId" element={<DiagramRoute project={project} />} />
+          <Route path="/model/:modelId/story/:storyId" element={<StoryRoute project={project} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
     </div>
   );
 }
 
-// --- Sub-components (Inline for now, can extract later) ---
+// --- Route Components ---
 
-function ProjectDashboard({ project, onSelectModel }: { project: ConceptProject, onSelectModel: (id: string) => void }) {
+function ModelRoute({ project }: { project: ConceptProject }) {
+  const { modelId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const model = project.models.find(m => m.id === modelId);
+  const conceptId = searchParams.get('concept');
+
+  if (!model) return <Navigate to="/" replace />;
+
+  const selectedConcept = conceptId ? model.concepts.find(c => c.id === conceptId) : null;
+
+  if (selectedConcept) {
+    return (
+      <ConceptDetailSpec
+        concept={selectedConcept}
+        model={model}
+        onBack={() => setSearchParams({})}
+      />
+    );
+  }
+
+  return (
+    <ModelView
+      model={model}
+      onSelectConcept={(id) => setSearchParams({ concept: id })}
+    />
+  );
+}
+
+function DiagramRoute({ project }: { project: ConceptProject }) {
+  const { modelId, viewId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const model = project.models.find(m => m.id === modelId);
+  const view = model?.views?.find(v => v.id === viewId);
+  const conceptId = searchParams.get('concept');
+
+  if (!model || !view) return <Navigate to={`/model/${modelId}`} replace />;
+
+  // We need to adapt DiagramView to handle URL-based selection if we want deep linking to nodes
+  // For now, let's just render it. The DiagramView manages its own selection state currently.
+  // Ideally, we'd lift that state up to the URL.
+
+  return (
+    <DiagramView
+      view={view}
+      model={model}
+      onBack={() => navigate(`/model/${modelId}`)}
+      selectedConceptId={conceptId}
+      onSelectConcept={(id) => setSearchParams(id ? { concept: id } : {})}
+    />
+  );
+}
+
+function StoryRoute({ project }: { project: ConceptProject }) {
+  const { modelId, storyId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const model = project.models.find(m => m.id === modelId);
+  const storyView = model?.storyViews?.find(s => s.id === storyId);
+  const conceptId = searchParams.get('concept');
+
+  if (!model || !storyView) return <Navigate to={`/model/${modelId}`} replace />;
+
+  const selectedConcept = conceptId ? model.concepts.find(c => c.id === conceptId) : null;
+
+  return (
+    <div className="h-full relative flex">
+      <div className={`flex-1 overflow-y-auto ${selectedConcept ? 'hidden md:block' : ''}`}>
+        <StoryViewComponent
+          storyView={storyView}
+          model={model}
+          onBack={() => navigate(`/model/${modelId}`)}
+          onSelectConcept={(id) => setSearchParams({ concept: id })}
+        />
+      </div>
+
+      {selectedConcept && (
+        <ResizableSidebar className="absolute inset-0 z-20 md:relative md:z-auto md:h-full">
+          {/* We reuse ConceptDetailSpec but maybe wrapped in a sidebar container */}
+          <div className="h-full flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center md:hidden">
+              <button onClick={() => setSearchParams({})} className="text-slate-500">Close</button>
+            </div>
+            <ConceptDetailSpec
+              concept={selectedConcept}
+              model={model}
+              onBack={() => setSearchParams({})}
+            />
+          </div>
+        </ResizableSidebar>
+      )}
+    </div>
+  );
+}
+
+// --- Sidebar Component ---
+
+function Sidebar({ project, registry, currentProjectId, setCurrentProjectId }: any) {
+  const navigate = useNavigate();
+
+  // We need to get params from the current route, but Sidebar is outside Routes.
+  // We can use useMatch or just parse location.pathname
+  const location = useLocation();
+  const pathParts = location.pathname.split('/');
+  const currentModelId = pathParts[1] === 'model' ? pathParts[2] : null;
+  const currentViewType = pathParts[3]; // 'view' or 'story'
+  const currentViewId = pathParts[4];
+
+  return (
+    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
+      <div className="p-4 border-b border-slate-100">
+        <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold">
+          <Layers className="w-5 h-5" />
+          <span>Concept Explorer</span>
+        </div>
+        <div className="relative">
+          <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1 block">Project</label>
+          <select
+            value={currentProjectId || ''}
+            onChange={e => setCurrentProjectId(e.target.value)}
+            className="w-full text-sm p-2 bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            {registry?.projects.map((p: any) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="px-2 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+          Models (Contexts)
+        </div>
+        <button
+          onClick={() => navigate('/')}
+          className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
+            ${location.pathname === '/' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+          `}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          Project Overview
+        </button>
+
+        {project?.models.map((model: any) => (
+          <div key={model.id}>
+            <button
+              onClick={() => navigate(`/model/${model.id}`)}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
+                ${currentModelId === model.id && !currentViewId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+              `}
+            >
+              <Box className="w-4 h-4" />
+              <span className="truncate">{model.title}</span>
+            </button>
+
+            {currentModelId === model.id && model.views && model.views.length > 0 && (
+              <div className="ml-4 mt-1">
+                <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Model Views
+                </div>
+                <div className="space-y-0.5 pb-2">
+                  {model.views.map((view: any) => (
+                    <button
+                      key={view.id}
+                      onClick={() => navigate(`/model/${model.id}/view/${view.id}`)}
+                      className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
+                        ${currentViewType === 'view' && currentViewId === view.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
+                      `}
+                    >
+                      <Network className="w-3.5 h-3.5" />
+                      <span className="truncate">{view.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {currentModelId === model.id && model.storyViews && model.storyViews.length > 0 && (
+              <div className="ml-4 mt-1">
+                <div className="px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Story Views
+                </div>
+                <div className="space-y-0.5 pb-2">
+                  {model.storyViews.map((storyView: any) => (
+                    <button
+                      key={storyView.id}
+                      onClick={() => navigate(`/model/${model.id}/story/${storyView.id}`)}
+                      className={`w-full text-left px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-2
+                        ${currentViewType === 'story' && currentViewId === storyView.id ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}
+                      `}
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span className="truncate">{storyView.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+// --- Existing Components (ProjectDashboard, ModelView, StoryViewComponent) ---
+// Kept mostly as is, but updated to use navigate where appropriate
+
+function ProjectDashboard({ project }: { project: ConceptProject }) {
+  const navigate = useNavigate();
   return (
     <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto">
       <div className="mb-8">
@@ -262,7 +356,7 @@ function ProjectDashboard({ project, onSelectModel }: { project: ConceptProject,
         {project.models.map(model => (
           <button
             key={model.id}
-            onClick={() => onSelectModel(model.id)}
+            onClick={() => navigate(`/model/${model.id}`)}
             className="text-left bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all group"
           >
             <div className="flex items-center gap-3 mb-3">
@@ -344,7 +438,12 @@ function getCategoryIcon(category: string) {
   }
 }
 
-function StoryViewComponent({ storyView, model, onBack }: { storyView: StoryView, model: ConceptModel, onBack: () => void }) {
+function StoryViewComponent({ storyView, model, onBack, onSelectConcept }: {
+  storyView: StoryView,
+  model: ConceptModel,
+  onBack: () => void,
+  onSelectConcept: (id: string) => void
+}) {
   return (
     <div className="p-8 max-w-4xl mx-auto w-full min-h-full">
       <div className="mb-8">
@@ -398,9 +497,13 @@ function StoryViewComponent({ storyView, model, onBack }: { storyView: StoryView
                   {step.conceptIds.map(conceptId => {
                     const concept = model.concepts.find(c => c.id === conceptId);
                     return concept ? (
-                      <span key={conceptId} className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded-md">
+                      <button
+                        key={conceptId}
+                        onClick={() => onSelectConcept(conceptId)}
+                        className="px-2 py-1 text-xs rounded-md transition-all hover:shadow-sm bg-slate-100 text-slate-700 hover:bg-slate-200 border border-transparent"
+                      >
                         {concept.label}
-                      </span>
+                      </button>
                     ) : null;
                   })}
                 </div>

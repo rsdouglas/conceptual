@@ -1,4 +1,5 @@
 import type { ModelView, ConceptModel } from '../../../conceptual/src/types/model';
+import { ResizableSidebar } from './ResizableSidebar';
 
 interface Node {
     id: string;
@@ -41,7 +42,7 @@ export function NodeDetailPanel({ selectedNode, nodes, links, model, view: _view
     const connectedConcepts = nodes.filter(node => connectedConceptIds.has(node.id) && node.id !== selectedNode.id);
 
     return (
-        <div className="w-96 bg-white border-l border-slate-200 flex flex-col">
+        <ResizableSidebar className="flex flex-col h-full">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200">
                 <div className="flex items-center justify-between">
@@ -152,7 +153,7 @@ export function NodeDetailPanel({ selectedNode, nodes, links, model, view: _view
                     </details>
                 )}
             </div>
-        </div>
+        </ResizableSidebar>
     );
 }
 
