@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import ejs from 'ejs';
 
 import {
   Concept,
@@ -57,7 +58,7 @@ async function discoverProjectStructure(
   symbols: SymbolInfo[],
   verbose?: boolean,
 ): Promise<DiscoveredProject> {
-  const prompt = buildProjectStructurePrompt(repoRoot, symbols);
+  const prompt = await buildProjectStructurePrompt(repoRoot, symbols);
 
   if (verbose) {
     console.log('\n📝 Project Structure Discovery Prompt:');
@@ -667,136 +668,29 @@ export async function analyzeRepo(opts: AnalyzeOptions) {
   }
 }
 
-function buildProjectStructurePrompt(
+async function buildProjectStructurePrompt(
   repoRoot: string,
   symbols: SymbolInfo[],
-): string {
+): Promise<string> {
   const symbolText = symbols
     .filter(s => s.isExported)
     .map(s => `- [${s.kind}] ${s.name} (in ${s.relativePath}:${s.line})`)
     .join('\n');
 
-  return `
-You are an expert in Dubberly-style concept modeling and domain-driven design.
+  // Resolve template path relative to this file
+  // We assume this file is in src/core or dist/core
+  // The template is in src/core/templates/projectStructure.ejs
 
-We are analyzing a codebase at \`${repoRoot}\`.
+  // If we are in src/core (dev mode with tsx), __dirname or import.meta.url points to src/core
+  const currentDir = path.dirname(new URL(import.meta.url).pathname);
+  const templatePath = path.resolve(currentDir, 'templates/projectStructure.ejs');
 
-Here is a list of top-level exported symbols discovered in the JS/TS files:
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Template not found at ${templatePath}`);
+  }
 
-${symbolText}
-
-Your job is NOT to describe the code structure. Your job is to infer the **real-world conceptual structure** of the system and express it as a **Concept Project** with one or more **Concept Models**, at a high-level "helicopter view".
-
-Think in terms of Dubberly concept models:
-
-- Concepts are **things, activities, roles, states, events, places, or times** in the *domain*, not in the framework.
-- Relationships are how those concepts relate in the real world (e.g., "User places Order", "Slack message becomes Data request").
-- Models are **coherent stories** or subsystems (e.g., "Sales", "Authentication", "Slack Bot Request Flow"), not just folders or modules.
-
-Treat the code as **evidence** of the underlying concepts:
-- Exported symbols hint at important concepts and responsibilities.
-- File paths and names hint at domains or subsystems.
-- Ignore low-level implementation details (framework glue, utilities).
-
-### Very important distinctions
-
-When choosing concepts and models:
-
-- **DO**:
-  - Focus on **domain ideas**: users, orders, tasks, requests, workflows, meetings, evaluations, data sources, permissions, etc.
-  - Merge many small code elements (functions, hooks, services) into a **single conceptual thing** where appropriate.
-    - e.g. many files about "data requests" → one concept: "Data request".
-  - Use **human-friendly concept names**, even if the code uses technical names.
-    - e.g. code symbol \`useDataRequestQuery\` → concept "Data request".
-  - Group concepts into models that correspond to **subsystems / bounded contexts**:
-    - e.g. "Slack Bot", "Admin / Evaluation UI", "Core Data Engine", "Authentication".
-  - Prefer **few, strong concepts** over many weak/technical ones.
-
-- **DO NOT**:
-  - Do NOT create a concept for every exported function or React component.
-  - Do NOT treat technical helpers as concepts (e.g. \`useState\`, \`Button\`, \`ThemeProvider\`, \`logger\`, \`httpClient\`).
-  - Do NOT describe internal libraries or frameworks as concepts.
-    - e.g. "React component" or "Express router" is not a domain concept.
-  - Do NOT mirror the code folder structure mechanically.
-  - Do NOT stay at the implementation level (e.g. "UserService", "OrderRepository") unless you can restate them as domain ideas ("User management", "Order storage").
-
-### Heuristics for Models (ConceptModel)
-
-Think of each **Concept Model** as a Dubberly-style diagram you could draw:
-
-- It should have a clear **domain focus**:
-  - e.g. "Slack Bot Data Request Flow", "Admin Evaluation Configuration", "Core Data Processing", "Authentication & Authorization".
-- It should be **understandable to a product manager** looking at the system.
-- It should NOT be “API routes” or “utility functions” as a model.
-
-Use filenames, directory names, and symbol groupings to infer models:
-- e.g. files under \`apps/slack-bot/*\` likely form a "Slack Bot" model.
-- e.g. files under \`apps/admin-ui/*\` likely form an "Admin UI / Evaluation" model.
-- e.g. files under \`core/data/*\` likely form a "Data Engine" model.
-
-### Heuristics for Concepts
-
-For each model, identify only the **key** concepts (the helicopter view):
-
-Examples of good concepts:
-- "User", "Admin", "Customer"
-- "Slack message", "Data request", "Meeting", "Recording"
-- "Evaluation rule", "Access policy", "Task", "Job", "Workflow"
-- "Result", "Error", "Session", "Token"
-- "Environment", "Project", "Repository"
-
-Examples of things that should **NOT** be concepts here:
-- "useFetch", "useQuery", "Button", "Theme", "Logger", "ConfigLoader"
-- "index.ts", "types.ts", generic helpers
-
-It is OK to:
-- Rename technical names to clearer domain names.
-  - \`DataRequestService\` → concept "Data request handling".
-- Combine multiple related symbols into one concept.
-  - \`SlackMessageHandler\`, \`SlackEventRouter\` → concept "Slack message handling".
-- Infer obvious relationships even if you don’t output them yet (for now, keep \`relationships\` empty).
-
-### Output format
-
-Return a JSON object matching this structure:
-
-{
-  "id": "project-id",
-  "name": "Project Name (domain-level, not repo name)",
-  "summary": "Short summary of what this system does in the real world",
-  "description": "Slightly longer description, 2-5 sentences, still at domain level",
-  "models": [
-    {
-      "id": "model-id",
-      "title": "Model Title (e.g. Slack Bot Data Request Flow)",
-      "description": "Description of this model/domain in human terms",
-      "concepts": [
-        {
-          "id": "concept-id (e.g. data-request)",
-          "label": "Data request",
-          "category": "thing|activity|role|state|event|place|time|other",
-          "description": "Brief domain-level description (what it is, not how it is implemented)",
-          "references": [
-            { "file": "path/to/file.ts", "symbol": "DataRequestService" }
-          ]
-        }
-      ],
-      "relationships": [],
-      "rules": [],
-      "lifecycles": [],
-      "views": []
-    }
-  ]
-}
-
-Constraints:
-
-- Focus on the most important concepts (the "helicopter view").
-- Keep concepts and models **domain-level**, not implementation-level.
-- Use \`references\` to point back to the *code* that implements the concept.
-- Do NOT explain your reasoning.
-- Return ONLY valid JSON.
-`.trim();
+  const template = fs.readFileSync(templatePath, 'utf8');
+  return ejs.render(template, { repoRoot, symbolText });
 }
 
 function buildConceptEnrichmentPrompt(
