@@ -1,0 +1,2834 @@
+{
+  "id": "conceptual-project",
+  "name": "Codebase Concept Extraction and Modeling System",
+  "summary": "A system that scans source code repositories, extracts structural information, and generates high-level concept models suitable for human understanding and visualization.",
+  "description": "This system analyzes software repositories to discover files, symbols, and language structures, then uses large language models to infer and generate Dubberly-style concept models of the underlying domain. It organizes these models into projects, models, concepts, relationships, rules, and story views that can be published to an external viewer. The goal is to help people see and discuss the conceptual structure of a codebase rather than its implementation details.",
+  "models": [
+    {
+      "id": "core-domain-model",
+      "title": "Codebase Concept Analysis Domain",
+      "description": "A model describing how a source code repository is analyzed and transformed into human-readable concept models, including the roles of language adapters, LLMs, and project/model structures.",
+      "concepts": [
+        {
+          "id": "source-code-repository",
+          "label": "Source code repository",
+          "category": "thing",
+          "description": "A collection of source files, typically managed with version control, that serves as the input to the analysis process.",
+          "aliases": [
+            "repository",
+            "repo",
+            "code repository",
+            "project root",
+            "repoRoot"
+          ],
+          "notes": "A source code repository is treated as a filesystem-backed project root directory that contains source files to be scanned. The scanning process respects .gitignore rules when present and typically focuses on a configurable source subdirectory (default 'src') and a set of file extensions. The repository is the primary input scope for repository analysis and determines which source files are eligible for further symbol and snippet extraction."
+        },
+        {
+          "id": "source-file",
+          "label": "Source file",
+          "category": "thing",
+          "description": "An individual file within a repository that contains code to be scanned for symbols and snippets.",
+          "aliases": [
+            "file",
+            "source file",
+            "code file",
+            "FileInfo",
+            "FileSnippet.relativePath (file path)",
+            "ScanResult.files"
+          ],
+          "notes": "A source file is a single code file within a source code repository that is discovered during repository scanning and then used as input for further analysis steps such as snippet extraction and symbol extraction. In the implementation, source files are represented by FileInfo objects (path, relativePath, size) and are filtered by extension and .gitignore rules."
+        },
+        {
+          "id": "code-symbol",
+          "label": "Code symbol",
+          "category": "thing",
+          "description": "A named element in source code, such as a function, class, interface, or type alias, that can be extracted and described as part of the analysis.",
+          "aliases": [
+            "Symbol",
+            "SymbolInfo",
+            "SymbolKind",
+            "TS symbol",
+            "TypeScript symbol",
+            "code symbol"
+          ],
+          "notes": "A code symbol represents a named declaration in a TypeScript/JavaScript source file (class, interface, type alias, enum, function, or variable) that can be located and described during repository analysis. Each symbol is characterized by its name, kind, file location (absolute and relative paths), export status (exported vs. default export), and precise position in the file (line and column). Symbols are extracted from source text by language-specific logic that parses files and walks the syntax tree."
+        },
+        {
+          "id": "code-snippet",
+          "label": "Code snippet",
+          "category": "thing",
+          "description": "A selected portion of source code, usually associated with a file and location, used as evidence when generating conceptual descriptions.",
+          "aliases": [
+            "FileSnippet",
+            "snippet"
+          ],
+          "notes": "A code snippet is a textual excerpt taken from a source file, typically the first portion of the file up to a configured character limit. In this system, snippets are used as lightweight samples of source files to provide evidence and context for later analysis and concept generation, without loading or processing entire files."
+        },
+        {
+          "id": "language-adapter",
+          "label": "Language adapter",
+          "category": "thing",
+          "description": "A component that understands a particular programming language and provides a uniform way to extract symbols and structure from source files in that language.",
+          "aliases": [
+            "LanguageAdapter",
+            "language adapter",
+            "language-specific adapter"
+          ],
+          "notes": "A Language adapter is a pluggable, language-specific component that knows how to interpret source files for a particular programming language and expose their symbols in a uniform, language-agnostic structure. It declares which file extensions it supports and provides an operation to extract symbol information from the textual contents of a source file. Concrete implementations (e.g., TypeScriptAdapter) encapsulate all language-specific parsing and symbol-detection logic so that the rest of the repository analysis pipeline can treat different languages in a consistent way."
+        },
+        {
+          "id": "repository-analysis",
+          "label": "Repository analysis",
+          "category": "activity",
+          "description": "The overall activity of scanning a repository, extracting symbols and snippets, and preparing data for concept generation.",
+          "aliases": [
+            "repository scan",
+            "repo scan",
+            "scanRepo",
+            "repository scanning",
+            "codebase scan",
+            "codebase analysis (scanning phase)"
+          ],
+          "notes": "Repository analysis is the overall activity of scanning a source code repository to identify relevant source files, collect basic file metadata, and prepare inputs (files, symbols, and snippets) for downstream concept generation. In the provided code, this is primarily realized by the scanRepo operation, which walks the repository tree (respecting .gitignore), filters by file extensions, and returns a list of FileInfo entries that will later be used for symbol extraction, snippet extraction, and LLM-based project structure discovery."
+        },
+        {
+          "id": "llm-environment",
+          "label": "LLM environment",
+          "category": "thing",
+          "description": "The configuration and context required to call a large language model, including credentials, model selection, and runtime settings.",
+          "aliases": [
+            "LLMEnv",
+            "LLM environment",
+            "LLM config",
+            "LLM client configuration"
+          ],
+          "notes": "An LLM environment bundles the configuration required to call a large language model: the API key used for authorization, the base URL of the LLM service, and the specific model identifier. It is passed into LLM invocation operations (such as callLLM) together with messages and response format options, and it determines which remote LLM endpoint is contacted and under which credentials."
+        },
+        {
+          "id": "llm-message",
+          "label": "LLM message",
+          "category": "thing",
+          "description": "A structured message exchanged with a large language model, representing prompts, instructions, or responses in the analysis workflow.",
+          "aliases": [
+            "LLMMessage",
+            "LLM chat message",
+            "LLM prompt message",
+            "LLM system message",
+            "LLM user message",
+            "chat completion message"
+          ],
+          "notes": "An LLM message is a single structured chat message sent to a large language model as part of a chat completion request. In this system it has a role (either 'system' or 'user') and a textual content string. Multiple LLM messages are combined into a messages array and passed to the LLM during an LLM invocation. System messages typically provide instructions or constraints, while user messages provide prompts or questions. The model's reply is not represented as an LLMMessage in this code, but as a raw content string (later possibly parsed into a structured object according to the LLM response format)."
+        },
+        {
+          "id": "llm-response-format",
+          "label": "LLM response format",
+          "category": "thing",
+          "description": "The expected structure or encoding of responses returned by the large language model during concept generation.",
+          "aliases": [
+            "ResponseFormat",
+            "responseFormat",
+            "LLM response format",
+            "LLM output format"
+          ],
+          "notes": "LLM response format represents the expected structure of the large language model's reply for a given invocation. In the provided code it is a discriminated setting with two allowed values: 'text' (free-form string content) and 'json_object' (machine-parseable JSON encoded as a string in the LLM message content). The chosen format determines how the system configures the LLM API call and how it interprets and post-processes the returned content."
+        },
+        {
+          "id": "llm-invocation",
+          "label": "LLM invocation",
+          "category": "activity",
+          "description": "The act of sending prompts and context to a large language model and receiving structured output used to build concept models.",
+          "aliases": [
+            "callLLM",
+            "LLM call",
+            "LLM call operation",
+            "LLM request",
+            "LLM API call",
+            "LLM chat completion request"
+          ],
+          "notes": "LLM invocation is the act of calling a large language model with a configured environment, a sequence of messages, and an expected response format, in order to obtain text or structured JSON used to build concept models. In code, this is encapsulated by the callLLM function, which sends messages to an external chat completion API and returns either raw text or parsed JSON typed to the expected domain structure (e.g., DiscoveredProject)."
+        },
+        {
+          "id": "concept-project",
+          "label": "Concept project",
+          "category": "thing",
+          "description": "A container for one or more concept models derived from a codebase, including metadata and registry information for organizing and accessing models.",
+          "aliases": [
+            "ConceptProject",
+            "project",
+            "concept project",
+            "project/workspace",
+            "project (or repository)"
+          ],
+          "notes": "A Concept project is a high-level container that groups multiple related concept models around a single product, system, or domain. It provides a single entry point for humans and tooling (including LLMs), and carries descriptive metadata (name, summary, description, tags, repo URL, notes) plus organizational hints such as a primary/default model. A separate ProjectRegistry and ProjectEntry structure support listing and locating multiple projects."
+        },
+        {
+          "id": "concept-model",
+          "label": "Concept model",
+          "category": "thing",
+          "description": "A structured representation of a domain, including concepts, relationships, rules, lifecycles, and views that describe how the system works at a conceptual level.",
+          "aliases": [
+            "ConceptModel",
+            "model",
+            "concept model"
+          ],
+          "notes": "A concept model is an individual, structured representation of a specific product, system, or sub-domain within a broader ConceptProject. It organizes Concepts, Relationships, Model rules, Concept lifecycles, and Model views into a coherent picture of how that part of the system works at a conceptual level. Multiple ConceptModels can belong to a single ConceptProject and may reference each other via external references."
+        },
+        {
+          "id": "domain-concept",
+          "label": "Concept",
+          "category": "thing",
+          "description": "A named element in a concept model representing a thing, activity, role, state, event, place, or time in the domain.",
+          "aliases": [
+            "Concept",
+            "Concept element",
+            "Domain concept",
+            "ConceptModel concept",
+            "Named element"
+          ],
+          "notes": "A Concept is a named domain element within a ConceptModel. It represents a thing, activity, role, state, event, place, or time that appears in the domain being modeled. Concepts are the primary building blocks that ConceptModels organize and that Relationships connect. They are generated from repository analysis and LLM invocations and are grouped within a ConceptProject via their containing ConceptModel."
+        },
+        {
+          "id": "relationship",
+          "label": "Relationship",
+          "category": "thing",
+          "description": "A connection between two or more concepts in a model, describing how they interact or depend on each other.",
+          "aliases": [
+            "edge",
+            "link",
+            "connection",
+            "association"
+          ],
+          "notes": "In this domain, a Relationship is a modeled connection between two or more domain concepts inside a ConceptModel. It captures how concepts depend on, contain, enable, or otherwise interact with each other. Relationships are part of the conceptual representation generated from a source code repository, not the code itself. They are defined and organized within a ConceptModel, which in turn is grouped under a ConceptProject. LLM invocations infer and produce these relationships based on evidence from repository analysis."
+        },
+        {
+          "id": "model-rule",
+          "label": "Model rule",
+          "category": "thing",
+          "description": "A constraint or guideline that describes allowed or expected patterns among concepts and relationships in a model.",
+          "aliases": [
+            "rule",
+            "model constraint",
+            "model guideline",
+            "modeling rule"
+          ],
+          "notes": "A model rule is a declarative statement that constrains or guides how a concept-model may be structured. It expresses allowed or expected patterns among domain-concept and relationship instances within a concept-model. Rules are generated by llm-invocation alongside other model elements and then used to validate, shape, or explain the structure of the concept-model. The provided code snippet does not define model-rule directly, but surrounding types (ConceptProject, ConceptModel) confirm that rules live inside a broader project/model container and act at the model level rather than at the code or repository level."
+        },
+        {
+          "id": "concept-lifecycle",
+          "label": "Concept lifecycle",
+          "category": "thing",
+          "description": "A description of the states a concept can pass through over time and the transitions between those states.",
+          "aliases": [
+            "lifecycle",
+            "state machine",
+            "state progression",
+            "concept state flow"
+          ],
+          "notes": "In this domain, a Concept lifecycle is a structural element inside a Concept model that describes how a domain concept changes over time. It focuses on enumerating states and allowed transitions, not on implementation details. The provided code snippet does not directly reference lifecycles, but other model context indicates that lifecycles are part of a ConceptModel and are generated from repository analysis via LLM invocations."
+        },
+        {
+          "id": "model-view",
+          "label": "Model view",
+          "category": "thing",
+          "description": "A particular visual or logical perspective on a concept model, selecting and arranging concepts and relationships for a specific purpose.",
+          "aliases": [
+            "View",
+            "ModelView",
+            "model perspective",
+            "visual perspective",
+            "logical perspective"
+          ],
+          "notes": "A model view is a curated perspective on a concept model, selecting a subset of concepts and relationships and arranging them (visually or logically) to serve a specific purpose such as explanation, navigation, or analysis. It is part of the conceptual layer of a ConceptModel and is generated as one of the structured outputs of an LLM invocation."
+        },
+        {
+          "id": "story-view",
+          "label": "Story view",
+          "category": "thing",
+          "description": "A narrative-oriented view of a model that presents concepts and relationships as a sequence of steps or scenes.",
+          "aliases": [
+            "Story view",
+            "story-view",
+            "story",
+            "narrative view",
+            "story model view"
+          ],
+          "notes": "A Story view is a specialized kind of model view that presents a Concept model as a narrative sequence. It focuses on telling how concepts and relationships play out over time or across scenes, rather than showing the entire structure at once. It is composed of ordered Story steps, each highlighting particular Concepts and Relationships and how they change or interact. Story views are generated by LLM invocations from the underlying Concept model and are intended for human understanding and exploration of system behavior as a story."
+        },
+        {
+          "id": "story-step",
+          "label": "Story step",
+          "category": "event",
+          "description": "An individual step or moment within a story view that highlights specific concepts, relationships, or changes in the system.",
+          "aliases": [
+            "story step",
+            "story scene",
+            "narrative step",
+            "timeline step"
+          ],
+          "notes": "A story step is an atomic moment or scene within a story-view that focuses attention on particular domain-concepts and relationships, often to illustrate a change, interaction, or important condition in the system. It is used for narrative-style explanations of a concept-model, but no explicit TypeScript type for story steps appears in the provided snippet; its existence and behavior are inferred from the surrounding model documentation and the established relationships."
+        },
+        {
+          "id": "concept-model-publication",
+          "label": "Concept model publication",
+          "category": "activity",
+          "description": "The activity of sending a generated concept project or model to an external viewer or visualization tool so that people can explore it.",
+          "aliases": [
+            "Concept model publication",
+            "publish",
+            "publishing",
+            "model publication",
+            "concept-project publication",
+            "publication to external viewer",
+            "publication to visualization tool"
+          ],
+          "notes": "Concept model publication is the activity of taking a generated concept project or concept model and making it available to an external viewer or visualization tool so that people can explore it. In the code, this is hinted at by the AnalyzeOptions flag `publish?: boolean`, which controls whether the analysis/generation process should also perform a publication step after models are generated. The actual mechanics (e.g., writing files, generating HTML, or sending data to a remote tool) are implementation details, but at the domain level the key idea is exposing the concept-model, its concepts, relationships, lifecycles, views, and story views for human exploration."
+        }
+      ],
+      "relationships": [
+        {
+          "id": "source-code-repository-contains-source-files",
+          "from": "source-code-repository",
+          "to": "source-file",
+          "phrase": "contains",
+          "category": "part_of",
+          "description": "A source code repository contains many source files that are discovered by scanning the repository's directory tree."
+        },
+        {
+          "id": "source-code-repository-is-subject-of-repository-analysis",
+          "from": "source-code-repository",
+          "to": "repository-analysis",
+          "phrase": "is analyzed by",
+          "category": "other",
+          "description": "Repository analysis operates on a source code repository, scanning its contents to identify source files for further processing."
+        },
+        {
+          "id": "source-file-contained-in-repo",
+          "from": "source-file",
+          "to": "source-code-repository",
+          "phrase": "is contained in",
+          "category": "part_of",
+          "description": "Each source file resides within a source code repository and is discovered by scanning that repository."
+        },
+        {
+          "id": "source-file-used-in-repository-analysis",
+          "from": "source-file",
+          "to": "repository-analysis",
+          "phrase": "is scanned during",
+          "category": "other",
+          "description": "Repository analysis scans source files to collect metadata and content for downstream processing."
+        },
+        {
+          "id": "source-file-produces-code-snippet",
+          "from": "source-file",
+          "to": "code-snippet",
+          "phrase": "is sampled into",
+          "category": "causes",
+          "description": "A source file is read and a portion of its contents is extracted as a code snippet for use as evidence in concept generation."
+        },
+        {
+          "id": "source-file-contains-code-symbol",
+          "from": "source-file",
+          "to": "code-symbol",
+          "phrase": "contains definitions of",
+          "category": "part_of",
+          "description": "Source files contain the code that defines code symbols such as functions, classes, and types, which are later extracted by language-aware analysis."
+        },
+        {
+          "id": "source-file-processed-by-language-adapter",
+          "from": "source-file",
+          "to": "language-adapter",
+          "phrase": "is interpreted by",
+          "category": "uses",
+          "description": "Source files are interpreted by a language adapter appropriate to their programming language to extract symbols and structure."
+        },
+        {
+          "id": "code-symbol-contained-in-source-file",
+          "from": "code-symbol",
+          "to": "source-file",
+          "phrase": "is defined in",
+          "category": "part_of",
+          "description": "Each code symbol is defined within a specific source file, identified by its absolute and repository-relative file paths."
+        },
+        {
+          "id": "code-symbol-extracted-during-repository-analysis",
+          "from": "code-symbol",
+          "to": "repository-analysis",
+          "phrase": "is extracted during",
+          "category": "other",
+          "description": "Code symbols are discovered and recorded as part of the repository analysis process that scans source files."
+        },
+        {
+          "id": "code-symbol-extracted-by-language-adapter",
+          "from": "code-symbol",
+          "to": "language-adapter",
+          "phrase": "is extracted by",
+          "category": "uses",
+          "description": "Code symbols are identified using language-specific parsing logic provided by a language adapter that understands the syntax and structure of the source file."
+        },
+        {
+          "id": "code-symbol-evidenced-by-code-snippet",
+          "from": "code-symbol",
+          "to": "code-snippet",
+          "phrase": "is evidenced by",
+          "category": "represents",
+          "description": "A code symbol can be associated with one or more code snippets that show the concrete source code corresponding to the symbol's declaration."
+        },
+        {
+          "id": "code-snippet-from-source-file",
+          "from": "code-snippet",
+          "to": "source-file",
+          "phrase": "is sampled from",
+          "category": "causes",
+          "description": "A code snippet is created by sampling the contents of a source file, typically taking the first N characters of the file."
+        },
+        {
+          "id": "code-snippet-used-in-repository-analysis",
+          "from": "code-snippet",
+          "to": "repository-analysis",
+          "phrase": "is produced during",
+          "category": "other",
+          "description": "Code snippets are produced as part of repository analysis when scanning and sampling source files."
+        },
+        {
+          "id": "code-snippet-located-in-source-file",
+          "from": "code-snippet",
+          "to": "source-file",
+          "phrase": "is located by relative path within",
+          "category": "part_of",
+          "description": "Each code snippet is associated with a relative path that identifies the source file it was extracted from within the repository."
+        },
+        {
+          "id": "code-snippet-originates-from-source-code-repository",
+          "from": "code-snippet",
+          "to": "source-code-repository",
+          "phrase": "originates from",
+          "category": "part_of",
+          "description": "Because snippets are sampled from source files contained in a repository, each code snippet ultimately originates from a specific source code repository."
+        },
+        {
+          "id": "language-adapter-supports-source-file-extensions",
+          "from": "language-adapter",
+          "to": "source-file",
+          "phrase": "declares supported file extensions for",
+          "category": "other",
+          "description": "A language adapter lists the file extensions of source files it can interpret, determining which files in a repository it is eligible to process."
+        },
+        {
+          "id": "language-adapter-interprets-source-file",
+          "from": "language-adapter",
+          "to": "source-file",
+          "phrase": "interprets",
+          "category": "uses",
+          "description": "A language adapter reads the content and path of a source file in its supported language in order to understand its structure and symbols."
+        },
+        {
+          "id": "language-adapter-extracts-code-symbol",
+          "from": "language-adapter",
+          "to": "code-symbol",
+          "phrase": "extracts",
+          "category": "uses",
+          "description": "A language adapter parses a source file and produces a collection of code symbols representing named elements such as functions, classes, and variables."
+        },
+        {
+          "id": "language-adapter-enables-repository-analysis",
+          "from": "language-adapter",
+          "to": "repository-analysis",
+          "phrase": "enables language-specific symbol extraction during",
+          "category": "enables",
+          "description": "Repository analysis relies on one or more language adapters to perform language-aware parsing and symbol extraction from source files."
+        },
+        {
+          "id": "repository-analysis-uses-source-code-repository",
+          "from": "repository-analysis",
+          "to": "source-code-repository",
+          "phrase": "analyzes",
+          "category": "uses",
+          "description": "Repository analysis operates over a source code repository root path, treating it as the input to be scanned and analyzed."
+        },
+        {
+          "id": "repository-analysis-identifies-source-file",
+          "from": "repository-analysis",
+          "to": "source-file",
+          "phrase": "identifies and selects",
+          "category": "causes",
+          "description": "Repository analysis walks the repository tree and identifies which source files should be included in further analysis based on location, ignore rules, and file extensions."
+        },
+        {
+          "id": "repository-analysis-prepares-fileinfo",
+          "from": "repository-analysis",
+          "to": "source-file",
+          "phrase": "prepares metadata for",
+          "category": "represents",
+          "description": "Repository analysis produces FileInfo records that represent selected source files with their paths, relative paths, and sizes for downstream processing."
+        },
+        {
+          "id": "repository-analysis-enables-code-symbol-extraction",
+          "from": "repository-analysis",
+          "to": "code-symbol",
+          "phrase": "enables extraction of",
+          "category": "enables",
+          "description": "By discovering and listing relevant source files, repository analysis enables later stages to extract code symbols from those files."
+        },
+        {
+          "id": "repository-analysis-enables-code-snippet-extraction",
+          "from": "repository-analysis",
+          "to": "code-snippet",
+          "phrase": "enables extraction of",
+          "category": "enables",
+          "description": "Repository analysis provides the set of files and locations that downstream processes use to extract code snippets as evidence for concept generation."
+        },
+        {
+          "id": "repository-analysis-uses-language-adapter",
+          "from": "repository-analysis",
+          "to": "language-adapter",
+          "phrase": "coordinates with",
+          "category": "uses",
+          "description": "Repository analysis prepares the file set that language adapters will interpret to extract language-specific symbols and structure."
+        },
+        {
+          "id": "repository-analysis-precedes-llm-invocation",
+          "from": "repository-analysis",
+          "to": "llm-invocation",
+          "phrase": "precedes and feeds",
+          "category": "precedes",
+          "description": "Repository analysis runs before LLM invocations, providing discovered symbols and file context that are embedded into prompts for project structure discovery and concept generation."
+        },
+        {
+          "id": "repository-analysis-supports-concept-project",
+          "from": "repository-analysis",
+          "to": "concept-project",
+          "phrase": "provides input for",
+          "category": "enables",
+          "description": "The outputs of repository analysis (files, symbols, snippets) are used to construct concept projects that capture the domain model of the analyzed codebase."
+        },
+        {
+          "id": "repository-analysis-supports-concept-model",
+          "from": "repository-analysis",
+          "to": "concept-model",
+          "phrase": "provides evidence for",
+          "category": "enables",
+          "description": "Repository analysis gathers the raw code evidence that is later synthesized into structured concept models describing the domain."
+        },
+        {
+          "id": "llm-environment-enables-llm-invocation",
+          "from": "llm-environment",
+          "to": "llm-invocation",
+          "phrase": "enables",
+          "category": "enables",
+          "description": "An LLM environment provides the credentials, base URL, and model identifier required to perform an LLM invocation."
+        },
+        {
+          "id": "llm-environment-is-used-by-llm-invocation",
+          "from": "llm-environment",
+          "to": "llm-message",
+          "phrase": "is used together with",
+          "category": "other",
+          "description": "An LLM environment is combined with a sequence of LLM messages when performing an LLM invocation."
+        },
+        {
+          "id": "llm-environment-selects-llm-response-format",
+          "from": "llm-environment",
+          "to": "llm-response-format",
+          "phrase": "constrains",
+          "category": "other",
+          "description": "The configuration in the LLM environment (notably the chosen model and base URL) constrains which LLM response formats are available or valid for a given invocation."
+        },
+        {
+          "id": "llm-message-used-in-llm-invocation",
+          "from": "llm-message",
+          "to": "llm-invocation",
+          "phrase": "is included in",
+          "category": "part_of",
+          "description": "Each LLM message is one element of the messages array that forms the prompt payload of an LLM invocation."
+        },
+        {
+          "id": "llm-invocation-uses-llm-message",
+          "from": "llm-invocation",
+          "to": "llm-message",
+          "phrase": "uses as prompt context",
+          "category": "uses",
+          "description": "An LLM invocation uses one or more LLM messages to provide conversational context, instructions, and questions to the large language model."
+        },
+        {
+          "id": "llm-message-uses-llm-environment",
+          "from": "llm-message",
+          "to": "llm-environment",
+          "phrase": "is interpreted under",
+          "category": "uses",
+          "description": "An LLM message is interpreted by the large language model according to the configuration defined in the LLM environment (model, base URL, API key)."
+        },
+        {
+          "id": "llm-message-influences-llm-response-format",
+          "from": "llm-message",
+          "to": "llm-response-format",
+          "phrase": "constrains expected response through its content",
+          "category": "represents",
+          "description": "The content of LLM messages (especially system messages) can describe or reinforce the expected LLM response format, guiding the model to return plain text or structured JSON that matches the configured response format."
+        },
+        {
+          "id": "rel-llm-response-format-constrained-by-env",
+          "from": "llm-response-format",
+          "to": "llm-environment",
+          "phrase": "is constrained by",
+          "category": "other",
+          "description": "The available and effective LLM response formats are constrained by the LLM environment configuration, such as the selected model and API capabilities."
+        },
+        {
+          "id": "rel-llm-response-format-shaped-by-message",
+          "from": "llm-response-format",
+          "to": "llm-message",
+          "phrase": "is shaped by",
+          "category": "represents",
+          "description": "The expected LLM response format is reflected and constrained by the content of the LLM messages (prompts and instructions) sent to the model."
+        },
+        {
+          "id": "rel-llm-response-format-used-in-invocation",
+          "from": "llm-response-format",
+          "to": "llm-invocation",
+          "phrase": "is specified for",
+          "category": "uses",
+          "description": "Each LLM invocation may specify an LLM response format, which determines how the invocation configures the API call and how it interprets the returned content."
+        },
+        {
+          "id": "rel-llm-response-format-enables-concept-model-building",
+          "from": "llm-response-format",
+          "to": "concept-model",
+          "phrase": "enables structured extraction for",
+          "category": "enables",
+          "description": "When set to a structured option such as 'json_object', the LLM response format enables reliable extraction of structured data that can be used to build or update concept models."
+        },
+        {
+          "id": "llm-invocation-uses-llm-environment",
+          "from": "llm-invocation",
+          "to": "llm-environment",
+          "phrase": "uses configuration from",
+          "category": "uses",
+          "description": "LLM invocation uses the LLM environment (API key, base URL, model) to determine how and where the model is called."
+        },
+        {
+          "id": "llm-invocation-includes-llm-message",
+          "from": "llm-invocation",
+          "to": "llm-message",
+          "phrase": "includes as prompt",
+          "category": "uses",
+          "description": "LLM invocation includes one or more LLM messages as the prompt and instructions sent to the model."
+        },
+        {
+          "id": "llm-invocation-specifies-llm-response-format",
+          "from": "llm-invocation",
+          "to": "llm-response-format",
+          "phrase": "specifies expected",
+          "category": "uses",
+          "description": "LLM invocation specifies the expected response format (text or JSON object), which determines how the returned content is interpreted."
+        },
+        {
+          "id": "llm-invocation-follows-repository-analysis",
+          "from": "llm-invocation",
+          "to": "repository-analysis",
+          "phrase": "follows and consumes results of",
+          "category": "precedes",
+          "description": "LLM invocation follows repository analysis, consuming extracted symbols and other analysis artifacts as prompt context for the model."
+        },
+        {
+          "id": "llm-invocation-enables-concept-project",
+          "from": "llm-invocation",
+          "to": "concept-project",
+          "phrase": "enables discovery of",
+          "category": "enables",
+          "description": "LLM invocation enables the discovery and construction of a concept project by asking the model to infer project-level conceptual structure from code symbols and repository context."
+        },
+        {
+          "id": "llm-invocation-enables-concept-model",
+          "from": "llm-invocation",
+          "to": "concept-model",
+          "phrase": "produces structured data for",
+          "category": "enables",
+          "description": "LLM invocation produces structured JSON that is interpreted as concept models, including concepts, relationships, and other model elements."
+        },
+        {
+          "id": "llm-invocation-produces-domain-concept-definitions",
+          "from": "llm-invocation",
+          "to": "domain-concept",
+          "phrase": "produces definitions of",
+          "category": "represents",
+          "description": "LLM invocation returns structured descriptions that represent domain concepts inferred from the codebase."
+        },
+        {
+          "id": "llm-invocation-produces-relationship-definitions",
+          "from": "llm-invocation",
+          "to": "relationship",
+          "phrase": "produces definitions of",
+          "category": "represents",
+          "description": "LLM invocation can return structured relationship definitions between concepts as part of the generated concept model."
+        },
+        {
+          "id": "llm-invocation-produces-concept-lifecycle-definitions",
+          "from": "llm-invocation",
+          "to": "concept-lifecycle",
+          "phrase": "produces lifecycle descriptions for",
+          "category": "represents",
+          "description": "LLM invocation can generate lifecycle descriptions for concepts, which are included in the structured model output."
+        },
+        {
+          "id": "llm-invocation-produces-model-rule-definitions",
+          "from": "llm-invocation",
+          "to": "model-rule",
+          "phrase": "produces rules for",
+          "category": "represents",
+          "description": "LLM invocation can generate model rules that constrain or describe patterns among concepts and relationships."
+        },
+        {
+          "id": "llm-invocation-produces-model-view-definitions",
+          "from": "llm-invocation",
+          "to": "model-view",
+          "phrase": "produces views for",
+          "category": "represents",
+          "description": "LLM invocation can generate model views, such as structural or narrative views, as part of the concept model output."
+        },
+        {
+          "id": "llm-invocation-produces-story-view-definitions",
+          "from": "llm-invocation",
+          "to": "story-view",
+          "phrase": "produces story views for",
+          "category": "represents",
+          "description": "LLM invocation can generate story views that narrate how concepts interact over time."
+        },
+        {
+          "id": "llm-invocation-supports-story-step-definitions",
+          "from": "llm-invocation",
+          "to": "story-step",
+          "phrase": "supports generation of",
+          "category": "represents",
+          "description": "LLM invocation can return structured story steps that make up story views in the concept model."
+        },
+        {
+          "id": "llm-invocation-enables-concept-model-publication",
+          "from": "llm-invocation",
+          "to": "concept-model-publication",
+          "phrase": "provides content for",
+          "category": "enables",
+          "description": "LLM invocation provides the generated concept models that are later published to external viewers or visualization tools."
+        },
+        {
+          "id": "concept-project-contains-concept-model",
+          "from": "concept-project",
+          "to": "concept-model",
+          "phrase": "groups and contains",
+          "category": "part_of",
+          "description": "A Concept project groups and contains one or more concept models that belong together around a single product, system, or domain."
+        },
+        {
+          "id": "repository-analysis-enables-concept-project",
+          "from": "repository-analysis",
+          "to": "concept-project",
+          "phrase": "provides input for",
+          "category": "enables",
+          "description": "Repository analysis provides input that can be used to create or enrich a Concept project and its contained concept models."
+        },
+        {
+          "id": "concept-project-links-to-source-code-repository",
+          "from": "concept-project",
+          "to": "source-code-repository",
+          "phrase": "links back to",
+          "category": "other",
+          "description": "A Concept project may include a link back to the underlying source code repository or related documentation via a repository URL."
+        },
+        {
+          "id": "concept-project-provides-entrypoint-for-llm-environment",
+          "from": "concept-project",
+          "to": "llm-environment",
+          "phrase": "provides high-level context to",
+          "category": "enables",
+          "description": "A Concept project provides high-level summary and descriptive context that can be used within an LLM environment when invoking models for analysis or exploration."
+        },
+        {
+          "id": "concept-project-provides-entrypoint-for-llm-invocation",
+          "from": "concept-project",
+          "to": "llm-invocation",
+          "phrase": "serves as an entry point for",
+          "category": "enables",
+          "description": "A Concept project acts as a single entry point for LLM-based tooling, allowing invocations to target the project and its grouped concept models."
+        },
+        {
+          "id": "concept-project-organized-by-project-registry",
+          "from": "concept-project",
+          "to": "concept-project-registry",
+          "phrase": "is listed in",
+          "category": "part_of",
+          "description": "A Concept project can be represented as a ProjectEntry and listed within a ProjectRegistry for discovery and organization across multiple projects."
+        },
+        {
+          "id": "concept-model-contained-in-concept-project",
+          "from": "concept-model",
+          "to": "concept-project",
+          "phrase": "is grouped within",
+          "category": "part_of",
+          "description": "Each concept model belongs to a concept project, which serves as a container above individual models for a product, system, or domain."
+        },
+        {
+          "id": "concept-model-organizes-domain-concepts",
+          "from": "concept-model",
+          "to": "domain-concept",
+          "phrase": "organizes",
+          "category": "represents",
+          "description": "A concept model organizes and structures individual concepts that describe things, activities, roles, states, events, places, or times in the domain."
+        },
+        {
+          "id": "concept-model-defines-relationships",
+          "from": "concept-model",
+          "to": "relationship",
+          "phrase": "defines",
+          "category": "represents",
+          "description": "A concept model defines relationships between concepts to describe how they interact or depend on each other."
+        },
+        {
+          "id": "concept-model-constrains-with-model-rules",
+          "from": "concept-model",
+          "to": "model-rule",
+          "phrase": "is constrained by",
+          "category": "represents",
+          "description": "A concept model includes model rules that describe allowed or expected patterns among its concepts and relationships."
+        },
+        {
+          "id": "concept-model-includes-concept-lifecycles",
+          "from": "concept-model",
+          "to": "concept-lifecycle",
+          "phrase": "includes",
+          "category": "represents",
+          "description": "A concept model includes concept lifecycles that describe how individual concepts change state over time."
+        },
+        {
+          "id": "concept-model-provides-model-views",
+          "from": "concept-model",
+          "to": "model-view",
+          "phrase": "provides",
+          "category": "represents",
+          "description": "A concept model provides one or more model views that present selected concepts and relationships for specific purposes."
+        },
+        {
+          "id": "concept-model-provides-story-views",
+          "from": "concept-model",
+          "to": "story-view",
+          "phrase": "can be narrated as",
+          "category": "represents",
+          "description": "A concept model can be expressed as story views that narrate the model as sequences of steps or scenes."
+        },
+        {
+          "id": "concept-model-serves-concept-model-publication",
+          "from": "concept-model",
+          "to": "concept-model-publication",
+          "phrase": "is published via",
+          "category": "enables",
+          "description": "A concept model is a primary artifact published to external viewers or visualization tools for exploration."
+        },
+        {
+          "id": "concept-model-derived-from-repository-analysis",
+          "from": "concept-model",
+          "to": "repository-analysis",
+          "phrase": "is derived from",
+          "category": "other",
+          "description": "A concept model is generated using evidence and structured data produced by repository analysis of a source code repository."
+        },
+        {
+          "id": "concept-model-shaped-by-llm-invocation",
+          "from": "concept-model",
+          "to": "llm-invocation",
+          "phrase": "is generated by",
+          "category": "represents",
+          "description": "A concept model is generated or refined based on structured outputs from LLM invocations that interpret repository analysis results."
+        },
+        {
+          "id": "concept-organized-by-concept-model",
+          "from": "domain-concept",
+          "to": "concept-model",
+          "phrase": "is organized by",
+          "category": "represents",
+          "description": "Each Concept exists within and is organized by a ConceptModel, which structures how concepts relate to each other in the domain."
+        },
+        {
+          "id": "concept-contained-in-concept-model",
+          "from": "domain-concept",
+          "to": "concept-model",
+          "phrase": "is contained in",
+          "category": "part_of",
+          "description": "A Concept is a constituent element of a ConceptModel, which groups related concepts into a coherent domain representation."
+        },
+        {
+          "id": "concept-linked-by-relationship",
+          "from": "domain-concept",
+          "to": "relationship",
+          "phrase": "is linked to other concepts by",
+          "category": "represents",
+          "description": "Relationships connect Concepts to each other, describing how they interact or depend on one another in the model."
+        },
+        {
+          "id": "concept-constrained-by-model-rule",
+          "from": "domain-concept",
+          "to": "model-rule",
+          "phrase": "is constrained by",
+          "category": "represents",
+          "description": "Model rules can impose constraints or guidelines on how Concepts may be defined or related within a ConceptModel."
+        },
+        {
+          "id": "concept-has-concept-lifecycle",
+          "from": "domain-concept",
+          "to": "concept-lifecycle",
+          "phrase": "may have lifecycle described by",
+          "category": "represents",
+          "description": "A Concept can have an associated Concept lifecycle that describes the states it can pass through and the transitions between those states."
+        },
+        {
+          "id": "concept-appears-in-model-view",
+          "from": "domain-concept",
+          "to": "model-view",
+          "phrase": "appears in",
+          "category": "represents",
+          "description": "Concepts are selected and arranged within Model views to present particular perspectives on the ConceptModel."
+        },
+        {
+          "id": "concept-appears-in-story-view",
+          "from": "domain-concept",
+          "to": "story-view",
+          "phrase": "is narrated within",
+          "category": "represents",
+          "description": "Concepts can be presented as part of a Story view, which narrates how they interact over time or across scenarios."
+        },
+        {
+          "id": "concept-highlighted-in-story-step",
+          "from": "domain-concept",
+          "to": "story-step",
+          "phrase": "is highlighted in",
+          "category": "represents",
+          "description": "Individual Story steps focus on particular Concepts and their Relationships at specific moments in the narrative."
+        },
+        {
+          "id": "concept-derived-from-repository-analysis",
+          "from": "domain-concept",
+          "to": "repository-analysis",
+          "phrase": "is derived from",
+          "category": "represents",
+          "description": "Concepts are inferred from the results of repository analysis, which scans source code and prepares evidence for concept generation."
+        },
+        {
+          "id": "concept-generated-by-llm-invocation",
+          "from": "domain-concept",
+          "to": "llm-invocation",
+          "phrase": "is generated by",
+          "category": "represents",
+          "description": "Definitions of Concepts are produced by LLM invocations that transform code-derived evidence into structured conceptual descriptions."
+        },
+        {
+          "id": "concept-published-via-concept-model-publication",
+          "from": "domain-concept",
+          "to": "concept-model-publication",
+          "phrase": "is exposed through",
+          "category": "enables",
+          "description": "Concepts become explorable to users when their containing ConceptModel is published via a Concept model publication."
+        },
+        {
+          "id": "concept-grouped-indirectly-by-concept-project",
+          "from": "domain-concept",
+          "to": "concept-project",
+          "phrase": "is grouped within project via its model",
+          "category": "part_of",
+          "description": "Concepts are indirectly grouped into a ConceptProject through the ConceptModels that contain them, aligning them with a single product, system, or domain."
+        },
+        {
+          "id": "relationship-contained-in-concept-model",
+          "from": "relationship",
+          "to": "concept-model",
+          "phrase": "is defined within",
+          "category": "part_of",
+          "description": "Each relationship is defined as part of a specific concept model, which organizes how concepts connect in a given domain."
+        },
+        {
+          "id": "relationship-links-domain-concepts",
+          "from": "relationship",
+          "to": "domain-concept",
+          "phrase": "links",
+          "category": "represents",
+          "description": "A relationship links two or more concepts, representing how those concepts interact, depend on each other, or are composed."
+        },
+        {
+          "id": "relationship-organized-by-concept-project",
+          "from": "relationship",
+          "to": "concept-project",
+          "phrase": "is grouped under",
+          "category": "part_of",
+          "description": "Relationships are indirectly grouped under a concept project via the concept models that belong to that project."
+        },
+        {
+          "id": "relationship-produced-by-llm-invocation",
+          "from": "relationship",
+          "to": "llm-invocation",
+          "phrase": "is produced by",
+          "category": "represents",
+          "description": "Relationships are generated as part of the structured output of an LLM invocation that analyzes repository-derived evidence."
+        },
+        {
+          "id": "relationship-derived-from-repository-analysis",
+          "from": "relationship",
+          "to": "repository-analysis",
+          "phrase": "is derived from",
+          "category": "represents",
+          "description": "Relationships are inferred from the results of repository analysis, which provides the underlying code symbols and snippets as evidence."
+        },
+        {
+          "id": "relationship-exposed-through-concept-model-publication",
+          "from": "relationship",
+          "to": "concept-model-publication",
+          "phrase": "is exposed through",
+          "category": "enables",
+          "description": "Relationships become visible to users when a concept model is published to an external viewer or visualization tool."
+        },
+        {
+          "id": "relationship-appears-in-model-view",
+          "from": "relationship",
+          "to": "model-view",
+          "phrase": "appears in",
+          "category": "represents",
+          "description": "Relationships can be selected and arranged in model views to show how concepts connect from a particular perspective."
+        },
+        {
+          "id": "relationship-narrated-in-story-view",
+          "from": "relationship",
+          "to": "story-view",
+          "phrase": "is narrated within",
+          "category": "represents",
+          "description": "Relationships can be presented as part of a narrative sequence in a story view, showing how connections change or matter over time."
+        },
+        {
+          "id": "relationship-highlighted-in-story-step",
+          "from": "relationship",
+          "to": "story-step",
+          "phrase": "is highlighted in",
+          "category": "represents",
+          "description": "Individual relationships may be emphasized in specific story steps to illustrate key interactions or dependencies."
+        },
+        {
+          "id": "relationship-constrained-by-model-rule",
+          "from": "relationship",
+          "to": "model-rule",
+          "phrase": "is constrained by",
+          "category": "represents",
+          "description": "Model rules can constrain which relationships are allowed or expected among concepts in a concept model."
+        },
+        {
+          "id": "model-rule-constrains-concept-model",
+          "from": "model-rule",
+          "to": "concept-model",
+          "phrase": "constrains",
+          "category": "represents",
+          "description": "A model rule constrains the structure and content of a concept model by specifying allowed or expected patterns among its concepts and relationships."
+        },
+        {
+          "id": "model-rule-constrains-domain-concept",
+          "from": "model-rule",
+          "to": "domain-concept",
+          "phrase": "constrains",
+          "category": "represents",
+          "description": "A model rule constrains how individual concepts may appear or relate within a concept model, such as cardinality, required attributes, or allowed connections."
+        },
+        {
+          "id": "model-rule-constrains-relationship",
+          "from": "model-rule",
+          "to": "relationship",
+          "phrase": "constrains",
+          "category": "represents",
+          "description": "A model rule constrains how relationships may be defined or used between concepts in a concept model, such as which concepts may be linked or what directions and types are valid."
+        },
+        {
+          "id": "model-rule-is-produced-by-llm-invocation",
+          "from": "model-rule",
+          "to": "llm-invocation",
+          "phrase": "is produced by",
+          "category": "represents",
+          "description": "Model rules are generated as part of the structured output of an LLM invocation that analyzes a repository and constructs a concept model."
+        },
+        {
+          "id": "model-rule-is-contained-in-concept-project",
+          "from": "model-rule",
+          "to": "concept-project",
+          "phrase": "is grouped within",
+          "category": "part_of",
+          "description": "Model rules are organized within a concept project via the concept models that the project contains, tying rules to a particular product, system, or domain."
+        },
+        {
+          "id": "concept-lifecycle-belongs-to-concept-model",
+          "from": "concept-lifecycle",
+          "to": "concept-model",
+          "phrase": "is included in",
+          "category": "part_of",
+          "description": "Each concept lifecycle is defined as part of a specific concept model, alongside concepts, relationships, rules, and views."
+        },
+        {
+          "id": "concept-lifecycle-describes-domain-concept",
+          "from": "concept-lifecycle",
+          "to": "domain-concept",
+          "phrase": "describes state changes of",
+          "category": "represents",
+          "description": "A concept lifecycle represents how a particular domain concept evolves over time by defining its states and transitions."
+        },
+        {
+          "id": "concept-lifecycle-produced-by-llm-invocation",
+          "from": "concept-lifecycle",
+          "to": "llm-invocation",
+          "phrase": "is produced by",
+          "category": "represents",
+          "description": "Concept lifecycle descriptions are generated as part of the structured output of an LLM invocation over repository analysis results."
+        },
+        {
+          "id": "concept-lifecycle-constrained-by-model-rule",
+          "from": "concept-lifecycle",
+          "to": "model-rule",
+          "phrase": "may be constrained by",
+          "category": "represents",
+          "description": "Model rules can implicitly constrain how lifecycles are defined, for example by limiting allowed states or transitions, even though this is not explicitly encoded in the snippet."
+        },
+        {
+          "id": "concept-lifecycle-exposed-through-concept-model-publication",
+          "from": "concept-lifecycle",
+          "to": "concept-model-publication",
+          "phrase": "is exposed through",
+          "category": "enables",
+          "description": "When a concept model is published to an external viewer, its concept lifecycles become available for exploration along with other model elements."
+        },
+        {
+          "id": "model-view-belongs-to-concept-model",
+          "from": "model-view",
+          "to": "concept-model",
+          "phrase": "is provided by",
+          "category": "represents",
+          "description": "Each model view is a perspective defined within a specific concept model, presenting that model's concepts and relationships in a particular arrangement."
+        },
+        {
+          "id": "model-view-includes-domain-concept",
+          "from": "model-view",
+          "to": "domain-concept",
+          "phrase": "includes and arranges",
+          "category": "represents",
+          "description": "A model view selects and arranges domain concepts from the underlying concept model to highlight aspects relevant to a specific purpose."
+        },
+        {
+          "id": "model-view-includes-relationship",
+          "from": "model-view",
+          "to": "relationship",
+          "phrase": "includes and arranges",
+          "category": "represents",
+          "description": "A model view selects and arranges relationships between concepts to show how elements of the domain connect from a particular perspective."
+        },
+        {
+          "id": "model-view-generated-by-llm-invocation",
+          "from": "model-view",
+          "to": "llm-invocation",
+          "phrase": "is produced by",
+          "category": "represents",
+          "description": "Model views are generated as part of the structured output of an LLM invocation that builds or updates a concept model."
+        },
+        {
+          "id": "model-view-exposed-via-concept-model-publication",
+          "from": "model-view",
+          "to": "concept-model-publication",
+          "phrase": "is exposed through",
+          "category": "enables",
+          "description": "Model views are made available to external viewers or visualization tools when a concept model is published."
+        },
+        {
+          "id": "model-view-contrasted-with-story-view",
+          "from": "model-view",
+          "to": "story-view",
+          "phrase": "complements",
+          "category": "other",
+          "description": "A model view provides a structural or logical perspective on a model, complementing story views that present the same model as a narrative sequence."
+        },
+        {
+          "id": "story-view-is-a-model-view",
+          "from": "story-view",
+          "to": "model-view",
+          "phrase": "is a specialized form of",
+          "category": "is_a",
+          "description": "Story view is a narrative-oriented specialization of a generic model view, focusing on sequences of steps or scenes rather than a static arrangement."
+        },
+        {
+          "id": "story-view-narrates-concept-model",
+          "from": "story-view",
+          "to": "concept-model",
+          "phrase": "narrates",
+          "category": "represents",
+          "description": "A Story view provides a narrative telling of a Concept model, turning its concepts and relationships into a sequence of scenes or steps."
+        },
+        {
+          "id": "story-view-includes-story-step",
+          "from": "story-view",
+          "to": "story-step",
+          "phrase": "is composed of",
+          "category": "part_of",
+          "description": "A Story view consists of an ordered collection of Story steps, each representing a moment or scene in the narrative."
+        },
+        {
+          "id": "story-view-highlights-domain-concept",
+          "from": "story-view",
+          "to": "domain-concept",
+          "phrase": "highlights and contextualizes",
+          "category": "represents",
+          "description": "Within a Story view, domain concepts are presented in context as characters or elements in the narrative sequence."
+        },
+        {
+          "id": "story-view-highlights-relationship",
+          "from": "story-view",
+          "to": "relationship",
+          "phrase": "highlights and contextualizes",
+          "category": "represents",
+          "description": "Within a Story view, relationships between concepts are shown as interactions or transitions across the narrative steps."
+        },
+        {
+          "id": "story-view-is-produced-by-llm-invocation",
+          "from": "story-view",
+          "to": "llm-invocation",
+          "phrase": "is produced by",
+          "category": "represents",
+          "description": "Story views are generated as part of the structured output of an LLM invocation based on repository analysis and concept models."
+        },
+        {
+          "id": "story-view-complements-model-view",
+          "from": "story-view",
+          "to": "model-view",
+          "phrase": "complements",
+          "category": "other",
+          "description": "Story views complement structural model views by providing a narrative, time-ordered perspective on the same underlying concepts and relationships."
+        },
+        {
+          "id": "story-view-is-exposed-through-concept-model-publication",
+          "from": "story-view",
+          "to": "concept-model-publication",
+          "phrase": "is exposed through",
+          "category": "enables",
+          "description": "Story views can be published alongside other views of the concept model so that people can explore the system as a narrative."
+        },
+        {
+          "id": "story-step-part-of-story-view",
+          "from": "story-step",
+          "to": "story-view",
+          "phrase": "is composed into",
+          "category": "part_of",
+          "description": "Each story-step is one element in the ordered sequence that composes a story-view."
+        },
+        {
+          "id": "story-step-highlights-domain-concept",
+          "from": "story-step",
+          "to": "domain-concept",
+          "phrase": "highlights",
+          "category": "represents",
+          "description": "A story-step highlights one or more domain-concepts that are important at that moment in the narrative."
+        },
+        {
+          "id": "story-step-highlights-relationship",
+          "from": "story-step",
+          "to": "relationship",
+          "phrase": "highlights",
+          "category": "represents",
+          "description": "A story-step can focus on specific relationships between domain-concepts to show how they interact at that point in the story."
+        },
+        {
+          "id": "story-step-narrates-concept-model",
+          "from": "story-step",
+          "to": "concept-model",
+          "phrase": "participates in narrating",
+          "category": "represents",
+          "description": "Through its inclusion in a story-view, a story-step contributes to narrating the behavior and structure of a concept-model over time."
+        },
+        {
+          "id": "story-step-generated-by-llm-invocation",
+          "from": "story-step",
+          "to": "llm-invocation",
+          "phrase": "is generated by",
+          "category": "represents",
+          "description": "Story-steps are produced as part of the structured output of an llm-invocation when generating story-views."
+        },
+        {
+          "id": "story-step-exposed-through-concept-model-publication",
+          "from": "story-step",
+          "to": "concept-model-publication",
+          "phrase": "is exposed through",
+          "category": "enables",
+          "description": "Story-steps become visible to users when a concept-model is published to an external viewer that supports story-views."
+        },
+        {
+          "id": "concept-model-publication-uses-concept-project",
+          "from": "concept-model-publication",
+          "to": "concept-project",
+          "phrase": "publishes from",
+          "category": "uses",
+          "description": "Concept model publication publishes content from a concept project, using the project as the container of models and metadata to be exposed."
+        },
+        {
+          "id": "concept-model-publication-uses-concept-model",
+          "from": "concept-model-publication",
+          "to": "concept-model",
+          "phrase": "publishes",
+          "category": "uses",
+          "description": "Concept model publication publishes one or more concept models so they can be viewed and explored in external tools."
+        },
+        {
+          "id": "concept-model-publication-uses-domain-concept",
+          "from": "concept-model-publication",
+          "to": "domain-concept",
+          "phrase": "exposes",
+          "category": "uses",
+          "description": "Concept model publication exposes individual concepts contained in the concept model to external viewers for exploration."
+        },
+        {
+          "id": "concept-model-publication-uses-relationship",
+          "from": "concept-model-publication",
+          "to": "relationship",
+          "phrase": "exposes",
+          "category": "uses",
+          "description": "Concept model publication exposes relationships between concepts so that external tools can visualize how concepts are connected."
+        },
+        {
+          "id": "concept-model-publication-uses-concept-lifecycle",
+          "from": "concept-model-publication",
+          "to": "concept-lifecycle",
+          "phrase": "exposes",
+          "category": "uses",
+          "description": "Concept model publication exposes concept lifecycles, allowing external viewers to show state transitions of concepts over time."
+        },
+        {
+          "id": "concept-model-publication-uses-model-view",
+          "from": "concept-model-publication",
+          "to": "model-view",
+          "phrase": "exposes",
+          "category": "uses",
+          "description": "Concept model publication exposes model views so that external visualization tools can present specific perspectives on the model."
+        },
+        {
+          "id": "concept-model-publication-uses-story-view",
+          "from": "concept-model-publication",
+          "to": "story-view",
+          "phrase": "exposes",
+          "category": "uses",
+          "description": "Concept model publication exposes story views so that narrative sequences of concepts and relationships can be explored."
+        },
+        {
+          "id": "concept-model-publication-uses-story-step",
+          "from": "concept-model-publication",
+          "to": "story-step",
+          "phrase": "exposes",
+          "category": "uses",
+          "description": "Concept model publication exposes individual story steps as part of published story views for detailed narrative exploration."
+        },
+        {
+          "id": "concept-model-publication-follows-llm-invocation",
+          "from": "concept-model-publication",
+          "to": "llm-invocation",
+          "phrase": "follows and consumes results of",
+          "category": "precedes",
+          "description": "Concept model publication occurs after LLM invocations have generated the concept project and models, consuming their structured output for publication."
+        },
+        {
+          "id": "concept-model-publication-uses-llm-environment",
+          "from": "concept-model-publication",
+          "to": "llm-environment",
+          "phrase": "is configured alongside",
+          "category": "other",
+          "description": "Concept model publication is configured as part of the overall analysis and generation environment, which includes the LLM environment used to create the models that will be published."
+        },
+        {
+          "id": "concept-model-publication-uses-repository-analysis",
+          "from": "concept-model-publication",
+          "to": "repository-analysis",
+          "phrase": "ultimately depends on results of",
+          "category": "other",
+          "description": "Concept model publication ultimately depends on repository analysis, because the published models are derived from analysis of the source code repository."
+        }
+      ],
+      "rules": [
+        {
+          "id": "source-code-repository-must-be-a-filesystem-path",
+          "title": "Repository must be addressable as a filesystem path",
+          "text": "A source code repository must be accessible via a concrete filesystem path (repoRoot) that can be resolved and traversed to discover files.",
+          "kind": "assumption",
+          "conceptIds": [
+            "source-code-repository"
+          ]
+        },
+        {
+          "id": "source-code-repository-respects-gitignore",
+          "title": "Repository scanning respects .gitignore",
+          "text": "When a .gitignore file exists at the root of a source code repository, its ignore rules are applied during scanning so that ignored paths are excluded from the set of discovered source files.",
+          "kind": "invariant",
+          "conceptIds": [
+            "source-code-repository"
+          ]
+        },
+        {
+          "id": "source-code-repository-has-optional-src-subdirectory",
+          "title": "Repository may define a primary source subdirectory",
+          "text": "A source code repository may designate a primary source subdirectory (by default named 'src'); if this subdirectory exists, scanning for source files begins there, otherwise scanning begins at the repository root.",
+          "kind": "assumption",
+          "conceptIds": [
+            "source-code-repository"
+          ]
+        },
+        {
+          "id": "source-code-repository-filters-by-extension",
+          "title": "Repository scanning filters by file extension",
+          "text": "Only files whose extensions are in the configured set of allowed extensions are treated as source files during repository scanning.",
+          "kind": "constraint",
+          "conceptIds": [
+            "source-code-repository"
+          ]
+        },
+        {
+          "id": "source-file-must-have-supported-extension",
+          "title": "Source file must have a supported extension",
+          "text": "Only files whose extensions are included in the configured extension list (e.g., .ts, .tsx, .js, .jsx) are treated as source files for analysis.",
+          "kind": "constraint",
+          "conceptIds": [
+            "source-file"
+          ]
+        },
+        {
+          "id": "source-file-must-not-be-ignored",
+          "title": "Source file must not be ignored by repository ignore rules",
+          "text": "Files whose paths match ignore patterns (such as those defined in .gitignore) are excluded from being treated as source files in the analysis.",
+          "kind": "constraint",
+          "conceptIds": [
+            "source-file"
+          ]
+        },
+        {
+          "id": "source-file-has-unique-repository-relative-path",
+          "title": "Source file has a repository-relative path",
+          "text": "Each source file is identified within a repository by a repository-relative path that is used when reporting snippets and analysis results.",
+          "kind": "assumption",
+          "conceptIds": [
+            "source-file"
+          ]
+        },
+        {
+          "id": "source-file-size-recorded",
+          "title": "Source file size is recorded for analysis selection",
+          "text": "Each source file has an associated size in bytes, which may be used to prioritize or limit which files are selected for snippet extraction.",
+          "kind": "assumption",
+          "conceptIds": [
+            "source-file"
+          ]
+        },
+        {
+          "id": "code-symbol-must-have-name",
+          "title": "Code symbol must have a name",
+          "text": "A code symbol is only recorded if it has a defined, non-empty name; unnamed declarations are not treated as symbols in the analysis.",
+          "kind": "invariant",
+          "conceptIds": [
+            "code-symbol"
+          ]
+        },
+        {
+          "id": "code-symbol-kind-enumeration",
+          "title": "Code symbol kind is constrained to known declaration types",
+          "text": "Each code symbol must have a kind that is one of: class, interface, typeAlias, enum, function, or variable.",
+          "kind": "constraint",
+          "conceptIds": [
+            "code-symbol"
+          ]
+        },
+        {
+          "id": "code-symbol-position-recorded",
+          "title": "Code symbol position is recorded as 1-based line and column",
+          "text": "For each code symbol, the line and column of its declaration within the source file are recorded using 1-based indexing for both line and column.",
+          "kind": "assumption",
+          "conceptIds": [
+            "code-symbol"
+          ]
+        },
+        {
+          "id": "code-symbol-export-flags-derived-from-modifiers",
+          "title": "Code symbol export status is derived from export and default modifiers",
+          "text": "A code symbol is marked as exported if it has an export or default modifier, and is marked as a default export only if it has a default modifier.",
+          "kind": "assumption",
+          "conceptIds": [
+            "code-symbol"
+          ]
+        },
+        {
+          "id": "code-snippet-max-files-and-size",
+          "title": "Snippet extraction limits number of files and characters",
+          "text": "When extracting code snippets from a set of source files, at most a configured maximum number of files are sampled, and for each sampled file only the first configured maximum number of characters are included in the snippet.",
+          "kind": "constraint",
+          "conceptIds": [
+            "code-snippet"
+          ]
+        },
+        {
+          "id": "code-snippet-derived-from-existing-file",
+          "title": "Snippet must be derived from an existing source file",
+          "text": "A code snippet must be derived from the contents of an existing source file and must carry the relative path of that file as part of its identity.",
+          "kind": "assumption",
+          "conceptIds": [
+            "code-snippet"
+          ]
+        },
+        {
+          "id": "language-adapter-must-declare-extensions",
+          "title": "Language adapter must declare supported file extensions",
+          "text": "Every language adapter must specify the list of file extensions it supports so that the analysis process can route source files to an appropriate adapter.",
+          "kind": "constraint",
+          "conceptIds": [
+            "language-adapter"
+          ]
+        },
+        {
+          "id": "language-adapter-extract-symbols-pure-function-of-input",
+          "title": "Symbol extraction depends only on provided file content and paths",
+          "text": "A language adapter's symbol extraction is determined solely by the given file content and its paths (absolute and relative), ensuring that symbol extraction is reproducible for the same inputs.",
+          "kind": "assumption",
+          "conceptIds": [
+            "language-adapter"
+          ]
+        },
+        {
+          "id": "repository-analysis-must-respect-gitignore",
+          "title": "Repository analysis must respect .gitignore rules",
+          "text": "When scanning a repository, repository analysis must load and apply patterns from the repository's .gitignore file (if present) so that ignored paths are excluded from analysis.",
+          "kind": "constraint",
+          "conceptIds": [
+            "repository-analysis"
+          ]
+        },
+        {
+          "id": "repository-analysis-must-filter-by-extensions",
+          "title": "Repository analysis must filter files by allowed extensions",
+          "text": "Repository analysis only includes files whose extensions are in the configured allowlist (e.g., .ts, .tsx, .js, .jsx) when preparing the set of files for further analysis.",
+          "kind": "constraint",
+          "conceptIds": [
+            "repository-analysis"
+          ]
+        },
+        {
+          "id": "repository-analysis-start-directory-selection",
+          "title": "Repository analysis prefers a source subdirectory when present",
+          "text": "Repository analysis should start scanning from a designated source directory (such as 'src') when it exists in the repository; otherwise, it should fall back to scanning from the repository root.",
+          "kind": "policy",
+          "conceptIds": [
+            "repository-analysis"
+          ]
+        },
+        {
+          "id": "repository-analysis-must-record-file-metadata",
+          "title": "Repository analysis must record basic file metadata",
+          "text": "For each selected source file, repository analysis must record at least its absolute path, its path relative to the repository root, and its size, so that downstream processes can reference and prioritize files.",
+          "kind": "invariant",
+          "conceptIds": [
+            "repository-analysis"
+          ]
+        },
+        {
+          "id": "rule-llm-env-requires-api-key",
+          "title": "LLM environment must include an API key",
+          "text": "An LLM environment must provide a non-empty API key so that the LLM service can authenticate the request.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-environment"
+          ]
+        },
+        {
+          "id": "rule-llm-env-must-specify-model",
+          "title": "LLM environment must specify a model identifier",
+          "text": "An LLM environment must specify which model to use; the model identifier is required for every LLM invocation.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-environment"
+          ]
+        },
+        {
+          "id": "rule-llm-env-has-default-base-url",
+          "title": "LLM environment may omit base URL when using default provider",
+          "text": "If an LLM environment does not specify a base URL, the system assumes a default LLM provider endpoint.",
+          "kind": "assumption",
+          "conceptIds": [
+            "llm-environment"
+          ]
+        },
+        {
+          "id": "llm-message-must-have-role",
+          "title": "LLM message must have a role",
+          "text": "Every LLM message must specify a role, which in this system is either 'system' or 'user'.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "llm-message-must-have-content",
+          "title": "LLM message must have content",
+          "text": "Every LLM message must include a non-empty textual content string that will be sent to the large language model.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "llm-messages-ordered-context",
+          "title": "LLM messages form an ordered conversational context",
+          "text": "The sequence of LLM messages provided to an LLM invocation is significant; earlier messages provide context and instructions that later messages and the model's response build upon.",
+          "kind": "assumption",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "system-messages-provide-instructions",
+          "title": "System-role LLM messages provide instructions",
+          "text": "LLM messages with role 'system' are intended to provide high-level instructions, constraints, or behavior guidelines for the large language model within the analysis workflow.",
+          "kind": "assumption",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "user-messages-provide-prompts",
+          "title": "User-role LLM messages provide prompts or questions",
+          "text": "LLM messages with role 'user' are intended to provide prompts, questions, or concrete tasks that the large language model should answer or perform.",
+          "kind": "assumption",
+          "conceptIds": [
+            "llm-message"
+          ]
+        },
+        {
+          "id": "rule-llm-response-format-enum",
+          "title": "Response format must be a supported value",
+          "text": "LLM response format must be one of the supported options ('text' or 'json_object'); other values are not allowed.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-response-format"
+          ]
+        },
+        {
+          "id": "rule-llm-response-format-default-text",
+          "title": "Default response format is text",
+          "text": "If no LLM response format is specified for an invocation, the system assumes a default of free-form text content.",
+          "kind": "assumption",
+          "conceptIds": [
+            "llm-response-format"
+          ]
+        },
+        {
+          "id": "rule-llm-response-format-json-requires-parse",
+          "title": "JSON object response format requires JSON parsing",
+          "text": "When the LLM response format is 'json_object', the returned content must be valid JSON and is parsed into a structured object; if parsing fails, the invocation is treated as an error.",
+          "kind": "invariant",
+          "conceptIds": [
+            "llm-response-format"
+          ]
+        },
+        {
+          "id": "rule-llm-response-format-text-no-parse",
+          "title": "Text response format is returned as-is",
+          "text": "When the LLM response format is 'text', the returned content is treated as an opaque string and is not parsed as JSON by the LLM invocation layer.",
+          "kind": "invariant",
+          "conceptIds": [
+            "llm-response-format"
+          ]
+        },
+        {
+          "id": "llm-invocation-must-have-env-and-messages",
+          "title": "LLM invocation requires environment and messages",
+          "text": "Every LLM invocation must be supplied with a valid LLM environment and at least one LLM message to form a meaningful request to the model.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-invocation"
+          ]
+        },
+        {
+          "id": "llm-invocation-must-handle-error-responses",
+          "title": "LLM invocation must handle error responses",
+          "text": "If the underlying LLM API responds with an error status or without content, the LLM invocation must be treated as failed and must not produce a concept model.",
+          "kind": "invariant",
+          "conceptIds": [
+            "llm-invocation"
+          ]
+        },
+        {
+          "id": "llm-invocation-json-format-must-be-parseable",
+          "title": "JSON-formatted LLM invocation must return parseable JSON",
+          "text": "When an LLM invocation requests a JSON object response format, the returned content must be valid JSON that can be parsed into the expected domain structure; otherwise the invocation is considered failed.",
+          "kind": "constraint",
+          "conceptIds": [
+            "llm-invocation"
+          ]
+        },
+        {
+          "id": "llm-invocation-temperature-fixed",
+          "title": "LLM invocation uses deterministic temperature",
+          "text": "LLM invocations for concept extraction use a fixed, low temperature to encourage deterministic, repeatable model outputs for concept models.",
+          "kind": "assumption",
+          "conceptIds": [
+            "llm-invocation"
+          ]
+        },
+        {
+          "id": "concept-project-must-have-id-name-summary-models",
+          "title": "Concept project requires core identifying and content fields",
+          "text": "A Concept project must have a unique identifier, a human-readable name, a short summary of what the project is about, and a collection of concept models (which may be empty or populated).",
+          "kind": "invariant",
+          "conceptIds": [
+            "concept-project",
+            "concept-model"
+          ]
+        },
+        {
+          "id": "concept-project-primary-model-id-should-reference-contained-model",
+          "title": "Primary model must belong to the project",
+          "text": "If a Concept project specifies a primaryModelId, that identifier should correspond to one of the concept models contained in the project.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-project",
+            "concept-model"
+          ]
+        },
+        {
+          "id": "concept-project-tags-are-optional-organizational-metadata",
+          "title": "Tags are optional and used for organization and search",
+          "text": "A Concept project may define tags as free-form labels to support organizing and searching projects; absence of tags does not affect the validity of the project.",
+          "kind": "assumption",
+          "conceptIds": [
+            "concept-project"
+          ]
+        },
+        {
+          "id": "concept-project-repo-url-is-optional-link",
+          "title": "Repository URL is an optional backlink",
+          "text": "A Concept project may include an optional repository URL that links back to the underlying code repository or documentation, but the project remains valid without it.",
+          "kind": "assumption",
+          "conceptIds": [
+            "concept-project",
+            "source-code-repository"
+          ]
+        },
+        {
+          "id": "concept-model-must-belong-to-project",
+          "title": "Concept model must belong to a concept project",
+          "text": "Every concept model is grouped within exactly one concept project, which provides the high-level context and entry point for tooling and LLMs.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-model",
+            "concept-project"
+          ]
+        },
+        {
+          "id": "concept-model-should-include-structured-elements",
+          "title": "Concept model should include core structural elements",
+          "text": "A concept model should include concepts, relationships, rules, lifecycles, and views so that it forms a coherent, structured representation of the domain.",
+          "kind": "assumption",
+          "conceptIds": [
+            "concept-model",
+            "domain-concept",
+            "relationship",
+            "model-rule",
+            "concept-lifecycle",
+            "model-view"
+          ]
+        },
+        {
+          "id": "concept-must-be-named",
+          "title": "Concept must have a name",
+          "text": "Every Concept in a ConceptModel must have a human-readable name that identifies the thing, activity, role, state, event, place, or time it represents in the domain.",
+          "kind": "invariant",
+          "conceptIds": [
+            "domain-concept"
+          ]
+        },
+        {
+          "id": "concept-must-belong-to-model",
+          "title": "Concept must belong to a ConceptModel",
+          "text": "Every Concept must be defined within exactly one ConceptModel, which provides its modeling context and relationships to other concepts.",
+          "kind": "constraint",
+          "conceptIds": [
+            "domain-concept",
+            "concept-model"
+          ]
+        },
+        {
+          "id": "concept-should-be-domain-level",
+          "title": "Concept should represent a domain-level idea",
+          "text": "Each Concept should represent a domain-level element such as a thing, activity, role, state, event, place, or time, rather than low-level implementation details.",
+          "kind": "policy",
+          "conceptIds": [
+            "domain-concept"
+          ]
+        },
+        {
+          "id": "relationship-must-connect-concepts",
+          "title": "Relationship must connect at least two concepts",
+          "text": "Every relationship in a concept model must connect two or more domain concepts; a relationship that does not link concepts is not meaningful in this domain.",
+          "kind": "invariant",
+          "conceptIds": [
+            "relationship",
+            "domain-concept"
+          ]
+        },
+        {
+          "id": "relationship-belongs-to-single-model",
+          "title": "Relationship belongs to a single concept model",
+          "text": "Each relationship is defined within exactly one concept model, which serves as its containing context, even if it references concepts from other models.",
+          "kind": "assumption",
+          "conceptIds": [
+            "relationship",
+            "concept-model"
+          ]
+        },
+        {
+          "id": "rule-model-rule-applies-within-single-concept-model",
+          "title": "Model rule applies within a specific concept model context",
+          "text": "Each model rule is interpreted in the context of a particular concept model and constrains only the concepts and relationships that belong to that model.",
+          "kind": "assumption",
+          "conceptIds": [
+            "model-rule"
+          ]
+        },
+        {
+          "id": "rule-model-rule-expresses-allowed-or-expected-patterns",
+          "title": "Model rule expresses allowed or expected patterns",
+          "text": "A model rule must describe allowed or expected patterns among concepts and relationships, rather than arbitrary implementation details, so that it can guide or validate the structure of the concept model.",
+          "kind": "constraint",
+          "conceptIds": [
+            "model-rule"
+          ]
+        },
+        {
+          "id": "concept-lifecycle-must-belong-to-model",
+          "title": "Lifecycle must belong to a single concept model",
+          "text": "Every concept lifecycle is defined within exactly one concept model and is interpreted in the context of that model's concepts and relationships.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-lifecycle"
+          ]
+        },
+        {
+          "id": "concept-lifecycle-must-target-concept",
+          "title": "Lifecycle must target a specific concept",
+          "text": "Each concept lifecycle must be associated with at least one domain concept whose states and transitions it describes.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-lifecycle"
+          ]
+        },
+        {
+          "id": "concept-lifecycle-has-states-and-transitions",
+          "title": "Lifecycle consists of states and transitions",
+          "text": "A concept lifecycle is defined as a set of discrete states and allowed transitions between those states, describing how the associated concept can evolve over time.",
+          "kind": "invariant",
+          "conceptIds": [
+            "concept-lifecycle"
+          ]
+        },
+        {
+          "id": "rule-model-view-derived-from-single-concept-model",
+          "title": "Model view is scoped to a single concept model",
+          "text": "Each model view is defined as a perspective on one specific concept model and should only include concepts and relationships that belong to that model or are explicitly referenced by it.",
+          "kind": "constraint",
+          "conceptIds": [
+            "model-view"
+          ]
+        },
+        {
+          "id": "rule-model-view-selects-subset",
+          "title": "Model view selects a purposeful subset",
+          "text": "A model view should intentionally select a subset of concepts and relationships rather than attempting to display the entire model indiscriminately, so that it serves a clear explanatory or analytical purpose.",
+          "kind": "policy",
+          "conceptIds": [
+            "model-view"
+          ]
+        },
+        {
+          "id": "rule-model-view-arranges-elements",
+          "title": "Model view arranges included elements",
+          "text": "A model view must define an arrangement or organization of the included concepts and relationships (such as grouping, layering, or ordering) that reflects the intended perspective.",
+          "kind": "assumption",
+          "conceptIds": [
+            "model-view"
+          ]
+        },
+        {
+          "id": "story-view-must-belong-to-concept-model",
+          "title": "Story view belongs to a single concept model",
+          "text": "Each Story view is defined in the context of a single Concept model whose concepts and relationships it narrates.",
+          "kind": "constraint",
+          "conceptIds": [
+            "story-view"
+          ]
+        },
+        {
+          "id": "story-view-has-ordered-steps",
+          "title": "Story view is composed of ordered story steps",
+          "text": "A Story view must consist of one or more Story steps arranged in a specific order to form a coherent narrative sequence.",
+          "kind": "invariant",
+          "conceptIds": [
+            "story-view"
+          ]
+        },
+        {
+          "id": "story-view-uses-existing-concepts-and-relationships",
+          "title": "Story view reuses model concepts and relationships",
+          "text": "A Story view should only reference Concepts and Relationships that are defined in its underlying Concept model, presenting them in narrative form rather than introducing new structural elements.",
+          "kind": "policy",
+          "conceptIds": [
+            "story-view"
+          ]
+        },
+        {
+          "id": "story-step-must-belong-to-story-view",
+          "title": "Story step must belong to a story view",
+          "text": "Every story-step is defined in the context of exactly one story-view and does not exist independently of a story-view.",
+          "kind": "constraint",
+          "conceptIds": [
+            "story-step"
+          ]
+        },
+        {
+          "id": "story-step-should-highlight-concepts-or-relationships",
+          "title": "Story step should highlight concepts or relationships",
+          "text": "Each story-step should explicitly highlight at least one domain-concept or relationship to justify its presence in the narrative.",
+          "kind": "policy",
+          "conceptIds": [
+            "story-step"
+          ]
+        },
+        {
+          "id": "story-step-order-matters",
+          "title": "Story step order is meaningful",
+          "text": "Story-steps within a story-view are ordered, and their sequence is intended to convey a meaningful progression or change in the system.",
+          "kind": "assumption",
+          "conceptIds": [
+            "story-step"
+          ]
+        },
+        {
+          "id": "concept-model-publication-requires-generated-models",
+          "title": "Publication requires generated concept models",
+          "text": "Concept model publication may only occur after at least one concept model has been generated from a repository analysis and LLM invocation.",
+          "kind": "constraint",
+          "conceptIds": [
+            "concept-model-publication"
+          ]
+        },
+        {
+          "id": "concept-model-publication-controlled-by-option-flag",
+          "title": "Publication is controlled by a publish option",
+          "text": "Concept model publication is only performed when the analysis or generation process is invoked with publication explicitly enabled (for example, via a publish flag in analysis options).",
+          "kind": "policy",
+          "conceptIds": [
+            "concept-model-publication"
+          ]
+        }
+      ],
+      "lifecycles": [
+        {
+          "id": "llm-invocation-lifecycle",
+          "subjectConceptId": "llm-invocation",
+          "stateConceptIds": [
+            "llm-invocation-requested",
+            "llm-invocation-in-progress",
+            "llm-invocation-succeeded",
+            "llm-invocation-failed"
+          ],
+          "transitionRelationshipIds": [],
+          "initialStateId": "llm-invocation-requested",
+          "terminalStateIds": [
+            "llm-invocation-succeeded",
+            "llm-invocation-failed"
+          ]
+        }
+      ],
+      "views": [
+        {
+          "id": "code-to-concepts-overview",
+          "name": "From source code to concept model",
+          "kind": "overview",
+          "description": "High-level flow from a source code repository through analysis and LLM processing to a published concept model.",
+          "conceptIds": [
+            "source-code-repository",
+            "repository-analysis",
+            "llm-invocation",
+            "concept-model",
+            "concept-model-publication"
+          ],
+          "relationshipIds": [
+            "repository-analysis-uses-source-code-repository",
+            "source-code-repository-is-subject-of-repository-analysis",
+            "repository-analysis-precedes-llm-invocation",
+            "llm-invocation-follows-repository-analysis",
+            "llm-invocation-enables-concept-model",
+            "concept-model-shaped-by-llm-invocation",
+            "concept-model-derived-from-repository-analysis",
+            "concept-model-serves-concept-model-publication",
+            "concept-model-publication-uses-concept-model",
+            "concept-model-publication-uses-repository-analysis"
+          ]
+        },
+        {
+          "id": "repository-analysis-structure",
+          "name": "Repository analysis and code artifacts",
+          "kind": "structure",
+          "description": "How a source code repository is broken down into files, symbols, and snippets during repository analysis using language adapters.",
+          "conceptIds": [
+            "source-code-repository",
+            "source-file",
+            "language-adapter",
+            "repository-analysis",
+            "code-symbol",
+            "code-snippet"
+          ],
+          "relationshipIds": [
+            "source-code-repository-contains-source-files",
+            "source-file-contained-in-repo",
+            "repository-analysis-identifies-source-file",
+            "repository-analysis-prepares-fileinfo",
+            "repository-analysis-enables-code-symbol-extraction",
+            "repository-analysis-enables-code-snippet-extraction",
+            "repository-analysis-uses-language-adapter",
+            "language-adapter-interprets-source-file",
+            "language-adapter-extracts-code-symbol",
+            "source-file-produces-code-snippet"
+          ]
+        },
+        {
+          "id": "llm-processing-plumbing",
+          "name": "LLM environment, messages, and invocation",
+          "kind": "implementation",
+          "description": "The technical plumbing of how the LLM environment, messages, and response format work together in an invocation.",
+          "conceptIds": [
+            "llm-environment",
+            "llm-message",
+            "llm-response-format",
+            "llm-invocation",
+            "concept-model"
+          ],
+          "relationshipIds": [
+            "llm-environment-enables-llm-invocation",
+            "llm-invocation-uses-llm-environment",
+            "llm-environment-is-used-by-llm-invocation",
+            "llm-message-used-in-llm-invocation",
+            "llm-invocation-includes-llm-message",
+            "llm-invocation-specifies-llm-response-format",
+            "rel-llm-response-format-used-in-invocation",
+            "llm-environment-selects-llm-response-format",
+            "rel-llm-response-format-constrained-by-env",
+            "rel-llm-response-format-enables-concept-model-building"
+          ]
+        },
+        {
+          "id": "concept-project-and-model-structure",
+          "name": "Concept project and model structure",
+          "kind": "structure",
+          "description": "How a concept project groups concept models and how those models organize concepts, relationships, rules, lifecycles, and views.",
+          "conceptIds": [
+            "concept-project",
+            "concept-model",
+            "domain-concept",
+            "relationship",
+            "model-rule",
+            "concept-lifecycle",
+            "model-view",
+            "story-view"
+          ],
+          "relationshipIds": [
+            "concept-project-contains-concept-model",
+            "concept-model-contained-in-concept-project",
+            "concept-model-organizes-domain-concepts",
+            "concept-model-defines-relationships",
+            "concept-model-constrains-with-model-rules",
+            "concept-model-includes-concept-lifecycles",
+            "concept-model-provides-model-views",
+            "concept-model-provides-story-views",
+            "story-view-is-a-model-view",
+            "story-view-narrates-concept-model"
+          ]
+        },
+        {
+          "id": "llm-output-to-model-elements",
+          "name": "How LLM output populates the concept model",
+          "kind": "lifecycle",
+          "description": "How a single LLM invocation produces the various elements that populate a concept model and its views.",
+          "conceptIds": [
+            "llm-invocation",
+            "domain-concept",
+            "relationship",
+            "model-rule",
+            "concept-lifecycle",
+            "model-view",
+            "story-view",
+            "story-step"
+          ],
+          "relationshipIds": [
+            "llm-invocation-produces-domain-concept-definitions",
+            "llm-invocation-produces-relationship-definitions",
+            "llm-invocation-produces-model-rule-definitions",
+            "llm-invocation-produces-concept-lifecycle-definitions",
+            "llm-invocation-produces-model-view-definitions",
+            "llm-invocation-produces-story-view-definitions",
+            "llm-invocation-supports-story-step-definitions",
+            "story-step-generated-by-llm-invocation",
+            "story-view-is-produced-by-llm-invocation",
+            "model-view-generated-by-llm-invocation"
+          ]
+        },
+        {
+          "id": "publication-and-consumption",
+          "name": "Concept model publication and exposure",
+          "kind": "overview",
+          "description": "How concept projects and their models, concepts, relationships, lifecycles, and views are exposed through publication.",
+          "conceptIds": [
+            "concept-project",
+            "concept-model",
+            "domain-concept",
+            "relationship",
+            "concept-lifecycle",
+            "model-view",
+            "story-view",
+            "story-step",
+            "concept-model-publication"
+          ],
+          "relationshipIds": [
+            "concept-model-publication-uses-concept-project",
+            "concept-model-publication-uses-concept-model",
+            "concept-model-publication-uses-domain-concept",
+            "concept-model-publication-uses-relationship",
+            "concept-model-publication-uses-concept-lifecycle",
+            "concept-model-publication-uses-model-view",
+            "concept-model-publication-uses-story-view",
+            "concept-model-publication-uses-story-step",
+            "concept-model-publication-follows-llm-invocation",
+            "concept-model-publication-uses-llm-environment"
+          ]
+        }
+      ],
+      "storyViews": [
+        {
+          "id": "from-repo-to-first-concept-model",
+          "name": "From Repository Scan to First Concept Model",
+          "kind": "system_flow",
+          "description": "A system-level narrative of how a source code repository is scanned, analyzed, and transformed into an initial concept model inside a concept project.",
+          "tags": [
+            "repository-analysis",
+            "concept-model",
+            "initial-flow"
+          ],
+          "focusConceptId": "repository-analysis",
+          "steps": [
+            {
+              "id": "discover-repository-and-files",
+              "index": 0,
+              "title": "Discover Repository and Source Files",
+              "narrative": "The system locates a source code repository and enumerates its source files as the starting point for analysis. Each discovered file is associated back to the repository as part of the analysis setup.",
+              "conceptIds": [
+                "source-code-repository",
+                "source-file",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "source-code-repository-contains-source-files",
+                "source-code-repository-is-subject-of-repository-analysis",
+                "repository-analysis-uses-source-code-repository",
+                "repository-analysis-identifies-source-file"
+              ],
+              "primaryConceptIds": [
+                "source-code-repository",
+                "repository-analysis"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-uses-source-code-repository"
+              ]
+            },
+            {
+              "id": "prepare-file-metadata",
+              "index": 1,
+              "title": "Prepare File Metadata for Analysis",
+              "narrative": "For each identified source file, the repository analysis prepares metadata and confirms its containment within the repository. This metadata will guide later symbol and snippet extraction.",
+              "conceptIds": [
+                "source-code-repository",
+                "source-file",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "source-file-contained-in-repo",
+                "source-file-used-in-repository-analysis",
+                "repository-analysis-prepares-fileinfo"
+              ],
+              "primaryConceptIds": [
+                "source-file",
+                "repository-analysis"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-prepares-fileinfo"
+              ]
+            },
+            {
+              "id": "interpret-files-with-language-adapter",
+              "index": 2,
+              "title": "Interpret Files with Language Adapters",
+              "narrative": "The repository analysis coordinates with language adapters that declare support for the discovered file types. Each source file is interpreted by an appropriate language adapter to enable language-specific extraction.",
+              "conceptIds": [
+                "source-file",
+                "language-adapter",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "repository-analysis-uses-language-adapter",
+                "language-adapter-supports-source-file-extensions",
+                "language-adapter-interprets-source-file",
+                "source-file-processed-by-language-adapter"
+              ],
+              "primaryConceptIds": [
+                "language-adapter",
+                "repository-analysis"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-uses-language-adapter"
+              ]
+            },
+            {
+              "id": "extract-symbols-and-snippets",
+              "index": 3,
+              "title": "Extract Code Symbols and Snippets",
+              "narrative": "Using the language adapters, the repository analysis extracts code symbols and samples code snippets from the source files. These extracted elements are tied back to their files and the repository as evidence for later conceptualization.",
+              "conceptIds": [
+                "source-file",
+                "code-symbol",
+                "code-snippet",
+                "language-adapter",
+                "repository-analysis",
+                "source-code-repository"
+              ],
+              "relationshipIds": [
+                "language-adapter-extracts-code-symbol",
+                "code-symbol-extracted-by-language-adapter",
+                "code-symbol-extracted-during-repository-analysis",
+                "repository-analysis-enables-code-symbol-extraction",
+                "source-file-produces-code-snippet",
+                "code-snippet-from-source-file",
+                "code-snippet-used-in-repository-analysis",
+                "repository-analysis-enables-code-snippet-extraction",
+                "code-snippet-originates-from-source-code-repository"
+              ],
+              "primaryConceptIds": [
+                "code-symbol",
+                "code-snippet",
+                "repository-analysis"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-enables-code-symbol-extraction",
+                "repository-analysis-enables-code-snippet-extraction"
+              ]
+            },
+            {
+              "id": "link-symbols-snippets-and-files",
+              "index": 4,
+              "title": "Link Symbols, Snippets, and Files",
+              "narrative": "Each extracted code symbol is associated with its defining source file and evidenced by one or more code snippets. Snippets are located within files by relative path, strengthening the traceability from concepts back to code.",
+              "conceptIds": [
+                "source-file",
+                "code-symbol",
+                "code-snippet",
+                "source-code-repository",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "source-file-contains-code-symbol",
+                "code-symbol-contained-in-source-file",
+                "code-symbol-evidenced-by-code-snippet",
+                "code-snippet-located-in-source-file",
+                "code-snippet-originates-from-source-code-repository",
+                "code-snippet-used-in-repository-analysis"
+              ],
+              "primaryConceptIds": [
+                "code-symbol",
+                "code-snippet"
+              ],
+              "primaryRelationshipIds": [
+                "code-symbol-evidenced-by-code-snippet"
+              ]
+            },
+            {
+              "id": "form-concept-project-and-model-input",
+              "index": 5,
+              "title": "Form Concept Project and Model Input",
+              "narrative": "With symbols and snippets prepared, the repository analysis provides input for creating a concept project and offers evidence for an initial concept model. This sets the stage for subsequent LLM-based concept generation.",
+              "conceptIds": [
+                "repository-analysis",
+                "concept-project",
+                "concept-model",
+                "source-code-repository"
+              ],
+              "relationshipIds": [
+                "repository-analysis-supports-concept-project",
+                "repository-analysis-supports-concept-model",
+                "concept-project-links-to-source-code-repository",
+                "concept-model-derived-from-repository-analysis"
+              ],
+              "primaryConceptIds": [
+                "repository-analysis",
+                "concept-project",
+                "concept-model"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-supports-concept-project",
+                "repository-analysis-supports-concept-model"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "llm-driven-concept-model-generation",
+          "name": "LLM-Driven Concept Model Generation",
+          "kind": "system_flow",
+          "description": "A narrative of how an LLM environment, messages, and response formats are used to invoke an LLM that generates concepts, relationships, rules, lifecycles, and views for a concept model.",
+          "tags": [
+            "llm",
+            "concept-generation",
+            "model-structure"
+          ],
+          "focusConceptId": "llm-invocation",
+          "steps": [
+            {
+              "id": "configure-llm-environment",
+              "index": 0,
+              "title": "Configure LLM Environment for the Project",
+              "narrative": "Within the context of a concept project, an LLM environment is configured with model selection, credentials, and runtime settings. This environment will constrain how responses are formatted and interpreted.",
+              "conceptIds": [
+                "concept-project",
+                "llm-environment",
+                "llm-response-format"
+              ],
+              "relationshipIds": [
+                "concept-project-provides-entrypoint-for-llm-environment",
+                "llm-environment-selects-llm-response-format",
+                "rel-llm-response-format-constrained-by-env"
+              ],
+              "primaryConceptIds": [
+                "concept-project",
+                "llm-environment"
+              ],
+              "primaryRelationshipIds": [
+                "concept-project-provides-entrypoint-for-llm-environment"
+              ]
+            },
+            {
+              "id": "prepare-llm-messages",
+              "index": 1,
+              "title": "Prepare LLM Messages with Repository Evidence",
+              "narrative": "The system prepares LLM messages that include instructions, extracted symbols, and snippets as context. These messages are interpreted under the configured LLM environment and help shape the expected response format.",
+              "conceptIds": [
+                "llm-message",
+                "llm-environment",
+                "llm-response-format",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "llm-message-uses-llm-environment",
+                "llm-environment-is-used-by-llm-invocation",
+                "llm-message-influences-llm-response-format",
+                "rel-llm-response-format-shaped-by-message",
+                "repository-analysis-precedes-llm-invocation"
+              ],
+              "primaryConceptIds": [
+                "llm-message",
+                "llm-environment"
+              ],
+              "primaryRelationshipIds": [
+                "llm-message-uses-llm-environment",
+                "llm-message-influences-llm-response-format"
+              ]
+            },
+            {
+              "id": "invoke-llm-with-structured-expectations",
+              "index": 2,
+              "title": "Invoke LLM with Structured Expectations",
+              "narrative": "An LLM invocation is created using the configured environment, prepared messages, and a specified response format. The invocation consumes results of the repository analysis and is expected to return structured model data.",
+              "conceptIds": [
+                "llm-invocation",
+                "llm-environment",
+                "llm-message",
+                "llm-response-format",
+                "repository-analysis",
+                "concept-project"
+              ],
+              "relationshipIds": [
+                "llm-environment-enables-llm-invocation",
+                "llm-invocation-uses-llm-environment",
+                "llm-message-used-in-llm-invocation",
+                "llm-invocation-includes-llm-message",
+                "llm-invocation-specifies-llm-response-format",
+                "rel-llm-response-format-used-in-invocation",
+                "llm-invocation-follows-repository-analysis",
+                "concept-project-provides-entrypoint-for-llm-invocation"
+              ],
+              "primaryConceptIds": [
+                "llm-invocation"
+              ],
+              "primaryRelationshipIds": [
+                "llm-environment-enables-llm-invocation",
+                "llm-invocation-specifies-llm-response-format"
+              ]
+            },
+            {
+              "id": "generate-core-model-elements",
+              "index": 3,
+              "title": "Generate Core Model Elements",
+              "narrative": "The LLM invocation produces definitions of domain concepts and relationships, using the structured response format to ensure they can be organized into a concept model. These elements are grouped under the concept project.",
+              "conceptIds": [
+                "llm-invocation",
+                "domain-concept",
+                "relationship",
+                "concept-model",
+                "concept-project",
+                "llm-response-format"
+              ],
+              "relationshipIds": [
+                "llm-invocation-produces-domain-concept-definitions",
+                "llm-invocation-produces-relationship-definitions",
+                "rel-llm-response-format-enables-concept-model-building",
+                "concept-model-organizes-domain-concepts",
+                "concept-model-defines-relationships",
+                "concept-project-contains-concept-model",
+                "concept-model-contained-in-concept-project",
+                "relationship-contained-in-concept-model",
+                "relationship-organized-by-concept-project",
+                "concept-grouped-indirectly-by-concept-project"
+              ],
+              "primaryConceptIds": [
+                "domain-concept",
+                "relationship",
+                "concept-model"
+              ],
+              "primaryRelationshipIds": [
+                "llm-invocation-produces-domain-concept-definitions",
+                "llm-invocation-produces-relationship-definitions"
+              ]
+            },
+            {
+              "id": "generate-rules-lifecycles-and-views",
+              "index": 4,
+              "title": "Generate Rules, Lifecycles, and Views",
+              "narrative": "The same LLM invocation also produces model rules, concept lifecycles, and both structural and story-oriented views. These outputs further constrain and narrate the concept model.",
+              "conceptIds": [
+                "llm-invocation",
+                "model-rule",
+                "concept-lifecycle",
+                "model-view",
+                "story-view",
+                "concept-model"
+              ],
+              "relationshipIds": [
+                "llm-invocation-produces-concept-lifecycle-definitions",
+                "llm-invocation-produces-model-rule-definitions",
+                "llm-invocation-produces-model-view-definitions",
+                "llm-invocation-produces-story-view-definitions",
+                "concept-model-constrains-with-model-rules",
+                "concept-model-includes-concept-lifecycles",
+                "concept-model-provides-model-views",
+                "concept-model-provides-story-views",
+                "model-rule-constrains-concept-model",
+                "concept-lifecycle-belongs-to-concept-model",
+                "model-view-belongs-to-concept-model",
+                "story-view-is-a-model-view",
+                "story-view-narrates-concept-model"
+              ],
+              "primaryConceptIds": [
+                "model-rule",
+                "concept-lifecycle",
+                "model-view",
+                "story-view"
+              ],
+              "primaryRelationshipIds": [
+                "llm-invocation-produces-model-rule-definitions",
+                "llm-invocation-produces-concept-lifecycle-definitions",
+                "llm-invocation-produces-model-view-definitions",
+                "llm-invocation-produces-story-view-definitions"
+              ]
+            },
+            {
+              "id": "shape-final-concept-model",
+              "index": 5,
+              "title": "Shape the Final Concept Model",
+              "narrative": "The generated concepts, relationships, rules, lifecycles, and views are assembled into a coherent concept model. The model is recognized as being generated by the LLM invocation and derived from the earlier repository analysis.",
+              "conceptIds": [
+                "concept-model",
+                "domain-concept",
+                "relationship",
+                "model-rule",
+                "concept-lifecycle",
+                "model-view",
+                "story-view",
+                "llm-invocation",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "concept-model-shaped-by-llm-invocation",
+                "concept-model-derived-from-repository-analysis",
+                "concept-organized-by-concept-model",
+                "concept-contained-in-concept-model",
+                "relationship-contained-in-concept-model",
+                "model-rule-constrains-concept-model",
+                "concept-lifecycle-belongs-to-concept-model",
+                "model-view-belongs-to-concept-model",
+                "story-view-narrates-concept-model"
+              ],
+              "primaryConceptIds": [
+                "concept-model"
+              ],
+              "primaryRelationshipIds": [
+                "concept-model-shaped-by-llm-invocation",
+                "concept-model-derived-from-repository-analysis"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "narrating-a-domain-with-story-views",
+          "name": "Narrating a Domain with Story Views",
+          "kind": "user_flow",
+          "description": "A narrative showing how story views and story steps are generated and used to help people understand a concept model over time.",
+          "tags": [
+            "story-view",
+            "explanation",
+            "narrative"
+          ],
+          "focusConceptId": "story-view",
+          "steps": [
+            {
+              "id": "create-story-views-from-llm",
+              "index": 0,
+              "title": "Create Story Views from LLM Output",
+              "narrative": "As part of the LLM invocation, the system generates one or more story views and their constituent story steps. Each story view is a specialized model view that narrates the concept model.",
+              "conceptIds": [
+                "llm-invocation",
+                "story-view",
+                "story-step",
+                "model-view",
+                "concept-model"
+              ],
+              "relationshipIds": [
+                "llm-invocation-produces-story-view-definitions",
+                "llm-invocation-supports-story-step-definitions",
+                "story-view-is-a-model-view",
+                "story-view-narrates-concept-model",
+                "story-view-includes-story-step",
+                "story-step-part-of-story-view",
+                "story-step-narrates-concept-model",
+                "story-view-complements-model-view",
+                "model-view-contrasted-with-story-view"
+              ],
+              "primaryConceptIds": [
+                "story-view",
+                "story-step"
+              ],
+              "primaryRelationshipIds": [
+                "llm-invocation-produces-story-view-definitions",
+                "llm-invocation-supports-story-step-definitions"
+              ]
+            },
+            {
+              "id": "highlight-concepts-and-relationships-in-steps",
+              "index": 1,
+              "title": "Highlight Concepts and Relationships in Steps",
+              "narrative": "Each story step is crafted to highlight specific domain concepts and relationships, showing how they interact at a particular moment. These highlights help readers follow the temporal evolution of the domain.",
+              "conceptIds": [
+                "story-step",
+                "domain-concept",
+                "relationship",
+                "concept-model"
+              ],
+              "relationshipIds": [
+                "story-step-highlights-domain-concept",
+                "story-step-highlights-relationship",
+                "concept-highlighted-in-story-step",
+                "relationship-highlighted-in-story-step",
+                "story-step-narrates-concept-model"
+              ],
+              "primaryConceptIds": [
+                "story-step",
+                "domain-concept",
+                "relationship"
+              ],
+              "primaryRelationshipIds": [
+                "story-step-highlights-domain-concept",
+                "story-step-highlights-relationship"
+              ]
+            },
+            {
+              "id": "connect-story-views-to-structural-views",
+              "index": 2,
+              "title": "Connect Story Views to Structural Views",
+              "narrative": "Story views are positioned as narrative complements to structural model views. While model views arrange concepts and relationships spatially, story views arrange them temporally to tell coherent scenarios.",
+              "conceptIds": [
+                "story-view",
+                "model-view",
+                "domain-concept",
+                "relationship",
+                "concept-model"
+              ],
+              "relationshipIds": [
+                "story-view-is-a-model-view",
+                "story-view-complements-model-view",
+                "model-view-contrasted-with-story-view",
+                "story-view-highlights-domain-concept",
+                "story-view-highlights-relationship",
+                "model-view-includes-domain-concept",
+                "model-view-includes-relationship"
+              ],
+              "primaryConceptIds": [
+                "story-view",
+                "model-view"
+              ],
+              "primaryRelationshipIds": [
+                "story-view-complements-model-view",
+                "model-view-contrasted-with-story-view"
+              ]
+            },
+            {
+              "id": "publish-story-views-for-exploration",
+              "index": 3,
+              "title": "Publish Story Views for Exploration",
+              "narrative": "When the concept model is published to an external viewer, its story views and story steps are exposed alongside concepts, relationships, and other views. Users can step through the stories to understand how the domain behaves over time.",
+              "conceptIds": [
+                "concept-model-publication",
+                "concept-project",
+                "concept-model",
+                "story-view",
+                "story-step",
+                "domain-concept",
+                "relationship",
+                "concept-lifecycle",
+                "model-view"
+              ],
+              "relationshipIds": [
+                "concept-model-publication-uses-concept-project",
+                "concept-model-publication-uses-concept-model",
+                "concept-model-publication-uses-story-view",
+                "concept-model-publication-uses-story-step",
+                "concept-model-publication-uses-domain-concept",
+                "concept-model-publication-uses-relationship",
+                "concept-model-publication-uses-concept-lifecycle",
+                "concept-model-publication-uses-model-view",
+                "story-view-is-exposed-through-concept-model-publication",
+                "story-step-exposed-through-concept-model-publication",
+                "concept-model-serves-concept-model-publication"
+              ],
+              "primaryConceptIds": [
+                "concept-model-publication",
+                "story-view",
+                "story-step"
+              ],
+              "primaryRelationshipIds": [
+                "concept-model-publication-uses-story-view",
+                "concept-model-publication-uses-story-step"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "end-to-end-publication-flow",
+          "name": "End-to-End Concept Model Publication Flow",
+          "kind": "integration_flow",
+          "description": "A cross-system narrative from repository analysis through LLM invocation to publishing the resulting concept model and its views.",
+          "tags": [
+            "end-to-end",
+            "publication",
+            "integration"
+          ],
+          "focusConceptId": "concept-model-publication",
+          "steps": [
+            {
+              "id": "analyze-repository-as-foundation",
+              "index": 0,
+              "title": "Analyze Repository as Foundation",
+              "narrative": "The process begins with repository analysis, which scans the source code repository, identifies source files, and extracts symbols and snippets. These results form the raw evidence for later conceptual modeling and publication.",
+              "conceptIds": [
+                "source-code-repository",
+                "source-file",
+                "code-symbol",
+                "code-snippet",
+                "language-adapter",
+                "repository-analysis"
+              ],
+              "relationshipIds": [
+                "source-code-repository-is-subject-of-repository-analysis",
+                "repository-analysis-uses-source-code-repository",
+                "repository-analysis-identifies-source-file",
+                "repository-analysis-prepares-fileinfo",
+                "repository-analysis-uses-language-adapter",
+                "repository-analysis-enables-code-symbol-extraction",
+                "repository-analysis-enables-code-snippet-extraction",
+                "code-symbol-extracted-during-repository-analysis",
+                "code-snippet-used-in-repository-analysis"
+              ],
+              "primaryConceptIds": [
+                "repository-analysis"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-uses-source-code-repository"
+              ]
+            },
+            {
+              "id": "invoke-llm-to-generate-model",
+              "index": 1,
+              "title": "Invoke LLM to Generate Concept Model",
+              "narrative": "Using the results of the repository analysis, an LLM invocation is performed under a configured environment with structured messages and response formats. The invocation produces the core elements of a concept model and organizes them into a concept project.",
+              "conceptIds": [
+                "repository-analysis",
+                "llm-environment",
+                "llm-message",
+                "llm-response-format",
+                "llm-invocation",
+                "concept-project",
+                "concept-model",
+                "domain-concept",
+                "relationship",
+                "model-rule",
+                "concept-lifecycle",
+                "model-view",
+                "story-view"
+              ],
+              "relationshipIds": [
+                "repository-analysis-precedes-llm-invocation",
+                "llm-environment-enables-llm-invocation",
+                "llm-invocation-uses-llm-environment",
+                "llm-message-used-in-llm-invocation",
+                "llm-invocation-includes-llm-message",
+                "llm-invocation-specifies-llm-response-format",
+                "llm-invocation-enables-concept-project",
+                "llm-invocation-enables-concept-model",
+                "llm-invocation-produces-domain-concept-definitions",
+                "llm-invocation-produces-relationship-definitions",
+                "llm-invocation-produces-model-rule-definitions",
+                "llm-invocation-produces-concept-lifecycle-definitions",
+                "llm-invocation-produces-model-view-definitions",
+                "llm-invocation-produces-story-view-definitions",
+                "concept-project-contains-concept-model",
+                "concept-model-shaped-by-llm-invocation"
+              ],
+              "primaryConceptIds": [
+                "llm-invocation",
+                "concept-model",
+                "concept-project"
+              ],
+              "primaryRelationshipIds": [
+                "repository-analysis-precedes-llm-invocation",
+                "llm-invocation-enables-concept-model"
+              ]
+            },
+            {
+              "id": "organize-model-for-publication",
+              "index": 2,
+              "title": "Organize Model for Publication",
+              "narrative": "The generated concept model organizes domain concepts and relationships, applies model rules, and includes lifecycles and views. This organization prepares the model to be consumed by publication tools.",
+              "conceptIds": [
+                "concept-project",
+                "concept-model",
+                "domain-concept",
+                "relationship",
+                "model-rule",
+                "concept-lifecycle",
+                "model-view",
+                "story-view"
+              ],
+              "relationshipIds": [
+                "concept-project-contains-concept-model",
+                "concept-model-organizes-domain-concepts",
+                "concept-model-defines-relationships",
+                "concept-model-constrains-with-model-rules",
+                "concept-model-includes-concept-lifecycles",
+                "concept-model-provides-model-views",
+                "concept-model-provides-story-views",
+                "concept-organized-by-concept-model",
+                "concept-contained-in-concept-model",
+                "relationship-contained-in-concept-model",
+                "model-rule-constrains-concept-model",
+                "concept-lifecycle-belongs-to-concept-model",
+                "model-view-belongs-to-concept-model",
+                "story-view-narrates-concept-model"
+              ],
+              "primaryConceptIds": [
+                "concept-model"
+              ],
+              "primaryRelationshipIds": [
+                "concept-model-organizes-domain-concepts",
+                "concept-model-defines-relationships"
+              ]
+            },
+            {
+              "id": "publish-model-to-external-viewer",
+              "index": 3,
+              "title": "Publish Model to External Viewer",
+              "narrative": "A concept model publication activity takes the concept project and its models and exposes them to an external viewer or visualization tool. It depends on the results of the LLM invocation and the underlying repository analysis.",
+              "conceptIds": [
+                "concept-model-publication",
+                "concept-project",
+                "concept-model",
+                "llm-invocation",
+                "repository-analysis",
+                "llm-environment"
+              ],
+              "relationshipIds": [
+                "concept-model-publication-uses-concept-project",
+                "concept-model-publication-uses-concept-model",
+                "concept-model-publication-follows-llm-invocation",
+                "concept-model-publication-uses-repository-analysis",
+                "concept-model-publication-uses-llm-environment",
+                "concept-model-serves-concept-model-publication",
+                "llm-invocation-enables-concept-model-publication"
+              ],
+              "primaryConceptIds": [
+                "concept-model-publication"
+              ],
+              "primaryRelationshipIds": [
+                "concept-model-publication-uses-concept-project",
+                "concept-model-publication-follows-llm-invocation"
+              ]
+            },
+            {
+              "id": "expose-concepts-relationships-and-views",
+              "index": 4,
+              "title": "Expose Concepts, Relationships, and Views",
+              "narrative": "Through the publication, users can explore domain concepts, relationships, lifecycles, and both structural and story views. Story steps are available to walk through key scenarios, making the model more accessible.",
+              "conceptIds": [
+                "concept-model-publication",
+                "domain-concept",
+                "relationship",
+                "concept-lifecycle",
+                "model-view",
+                "story-view",
+                "story-step"
+              ],
+              "relationshipIds": [
+                "concept-model-publication-uses-domain-concept",
+                "concept-model-publication-uses-relationship",
+                "concept-model-publication-uses-concept-lifecycle",
+                "concept-model-publication-uses-model-view",
+                "concept-model-publication-uses-story-view",
+                "concept-model-publication-uses-story-step",
+                "concept-published-via-concept-model-publication",
+                "relationship-exposed-through-concept-model-publication",
+                "concept-lifecycle-exposed-through-concept-model-publication",
+                "model-view-exposed-via-concept-model-publication",
+                "story-view-is-exposed-through-concept-model-publication",
+                "story-step-exposed-through-concept-model-publication"
+              ],
+              "primaryConceptIds": [
+                "concept-model-publication",
+                "story-view",
+                "story-step"
+              ],
+              "primaryRelationshipIds": [
+                "concept-model-publication-uses-story-view",
+                "concept-model-publication-uses-story-step"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

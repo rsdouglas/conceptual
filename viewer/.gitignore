@@ -26,3 +26,4 @@ dist-ssr
 # Model JSON files (except demo.json)
 public/models/*.json
 !public/models/demo.json
+!public/models/conceptual.json
