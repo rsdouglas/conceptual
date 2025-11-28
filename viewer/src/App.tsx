@@ -2,15 +2,6 @@ import {
   useEffect,
   useState,
 } from 'react';
-import {
-  Routes,
-  Route,
-  useParams,
-  useSearchParams,
-  useNavigate,
-  Navigate,
-  useLocation,
-} from 'react-router-dom';
 
 import {
   Activity,
@@ -25,6 +16,15 @@ import {
   Network,
   Zap,
 } from 'lucide-react';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 
 import type {
   Concept,
@@ -36,6 +36,7 @@ import type {
 } from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
 import { DiagramView } from './components/DiagramView';
+import { EverythingView } from './components/EverythingView';
 import { ResizableSidebar } from './components/ResizableSidebar';
 
 // Hard-coded demo project that always appears in the list
@@ -52,6 +53,7 @@ function App() {
   const [project, setProject] = useState<ConceptProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // Load registry
   useEffect(() => {
@@ -115,6 +117,7 @@ function App() {
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 overflow-y-auto relative">
         <Routes>
           <Route path="/" element={<ProjectDashboard project={project} />} />
+          <Route path="/everything" element={<EverythingView project={project} onBack={() => navigate('/')} />} />
           <Route path="/model/:modelId" element={<ModelRoute project={project} />} />
           <Route path="/model/:modelId/view/:viewId" element={<DiagramRoute project={project} />} />
           <Route path="/model/:modelId/story/:storyId" element={<StoryRoute project={project} />} />
@@ -270,6 +273,15 @@ function Sidebar({ project, registry, currentProjectId, setCurrentProjectId }: a
         >
           <LayoutGrid className="w-4 h-4" />
           Project Overview
+        </button>
+        <button
+          onClick={() => navigate('/everything')}
+          className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2
+            ${location.pathname === '/everything' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}
+          `}
+        >
+          <Network className="w-4 h-4" />
+          Everything
         </button>
 
         {project?.models.map((model: any) => (
