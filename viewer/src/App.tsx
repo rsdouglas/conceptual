@@ -32,13 +32,12 @@ import type {
   ConceptProject,
   ProjectEntry,
   ProjectRegistry,
-  StoryView,
 } from '../../conceptual/src/types/model';
 import { ConceptDetailSpec } from './components/ConceptDetailSpec';
 import { DiagramView } from './components/DiagramView';
 import { EverythingView } from './components/EverythingView';
 import { ResizableSidebar } from './components/ResizableSidebar';
-import { StoryDiagramView } from './components/StoryDiagramView';
+import { StoryView } from './components/StoryView';
 
 // Hard-coded demo project that always appears in the list
 const DEMO_PROJECT: ProjectEntry = {
@@ -193,30 +192,16 @@ function StoryRoute({ project }: { project: ConceptProject }) {
   const model = project.models.find(m => m.id === modelId);
   const storyView = model?.storyViews?.find(s => s.id === storyId);
   const conceptId = searchParams.get('concept');
-  const showDiagram = searchParams.get('diagram') === 'true';
+  // const showDiagram = searchParams.get('diagram') === 'true'; // No longer used for routing
 
   if (!model || !storyView) return <Navigate to={`/model/${modelId}`} replace />;
 
   const selectedConcept = conceptId ? model.concepts.find(c => c.id === conceptId) : null;
 
-  // If diagram mode is enabled, show the StoryDiagramView
-  if (showDiagram) {
-    return (
-      <StoryDiagramView
-        storyView={storyView}
-        model={model}
-        onBack={() => navigate(`/model/${modelId}`)}
-        selectedConceptId={conceptId}
-        onSelectConcept={(id) => setSearchParams(id ? { diagram: 'true', concept: id } : { diagram: 'true' })}
-      />
-    );
-  }
-
-  // Otherwise, show regular story view
   return (
     <div className="h-full relative flex">
       <div className={`flex-1 overflow-y-auto ${selectedConcept ? 'hidden md:block' : ''}`}>
-        <StoryViewComponent
+        <StoryView
           storyView={storyView}
           model={model}
           onBack={() => navigate(`/model/${modelId}`)}
@@ -363,8 +348,7 @@ function Sidebar({ project, registry, currentProjectId, setCurrentProjectId }: a
   );
 }
 
-// --- Existing Components (ProjectDashboard, ModelView, StoryViewComponent) ---
-// Kept mostly as is, but updated to use navigate where appropriate
+// --- Existing Components (ProjectDashboard, ModelView) ---
 
 function ProjectDashboard({ project }: { project: ConceptProject }) {
   const navigate = useNavigate();
@@ -465,174 +449,6 @@ function getCategoryIcon(category: string) {
     case 'event': return <Activity className="w-4 h-4" />;
     default: return <Code className="w-4 h-4" />;
   }
-}
-
-function StoryViewComponent({ storyView, model, onBack, onSelectConcept, navigate }: {
-  storyView: StoryView,
-  model: ConceptModel,
-  onBack: () => void,
-  onSelectConcept: (id: string) => void,
-  navigate: any
-}) {
-  const [stepThroughMode, setStepThroughMode] = useState(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const location = useLocation();
-
-  const totalSteps = storyView.steps.length;
-  const visibleSteps = stepThroughMode
-    ? storyView.steps.slice(0, currentStepIndex + 1)
-    : storyView.steps;
-
-  const canGoPrevious = currentStepIndex > 0;
-  const canGoNext = currentStepIndex < totalSteps - 1;
-
-  const handleToggleStepThrough = () => {
-    setStepThroughMode(!stepThroughMode);
-    if (!stepThroughMode) {
-      setCurrentStepIndex(0); // Reset to first step when entering step-through mode
-    }
-  };
-
-  const handleEnableDiagram = () => {
-    navigate(`${location.pathname}?diagram=true`);
-  };
-
-  return (
-    <div className="p-8 max-w-4xl mx-auto w-full min-h-full">
-      <div className="mb-8">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 mb-6"
-        >
-          <ChevronRight className="w-4 h-4 rotate-180" />
-          Back to Model
-        </button>
-
-        <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
-          <BookOpen className="w-4 h-4" />
-          <span>Story View</span>
-        </div>
-
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">{storyView.name}</h1>
-            <p className="text-slate-600 mb-4">{storyView.description}</p>
-          </div>
-
-          <div className="flex gap-2 ml-4">
-            <button
-              onClick={handleEnableDiagram}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-2"
-            >
-              <Network className="w-4 h-4" />
-              Show Diagram
-            </button>
-
-            <button
-              onClick={handleToggleStepThrough}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${stepThroughMode
-                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-            >
-              {stepThroughMode ? 'Exit Step Mode' : 'Step Through'}
-            </button>
-          </div>
-        </div>
-
-        {storyView.tags && storyView.tags.length > 0 && (
-          <div className="flex gap-2 mb-8">
-            {storyView.tags.map(tag => (
-              <span key={tag} className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-full">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Step-through controls */}
-      {stepThroughMode && (
-        <div className="mb-6 p-4 bg-indigo-50 rounded-lg border border-indigo-100 flex items-center justify-between">
-          <button
-            onClick={() => setCurrentStepIndex(prev => Math.max(0, prev - 1))}
-            disabled={!canGoPrevious}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${canGoPrevious
-              ? 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
-              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-          >
-            ◀ Previous
-          </button>
-
-          <div className="text-sm font-medium text-indigo-900">
-            Step {currentStepIndex + 1} of {totalSteps}
-          </div>
-
-          <button
-            onClick={() => setCurrentStepIndex(prev => Math.min(totalSteps - 1, prev + 1))}
-            disabled={!canGoNext}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${canGoNext
-              ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-          >
-            Next ▶
-          </button>
-        </div>
-      )}
-
-      {/* Vertical Timeline */}
-      <div className="relative">
-        {/* Timeline line */}
-        <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-slate-200"></div>
-
-        <div className="space-y-8">
-          {visibleSteps.map((step) => {
-            const isCurrentStep = stepThroughMode && step.index === currentStepIndex;
-
-            return (
-              <div
-                key={step.id}
-                className="relative flex gap-6 transition-all"
-              >
-                {/* Timeline dot */}
-                <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-4 border-white shadow-sm z-10 ${isCurrentStep
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-indigo-100 text-indigo-700'
-                  }`}>
-                  {step.index + 1}
-                </div>
-
-                {/* Step content */}
-                <div className="flex-1 pb-8">
-                  <h3 className="text-lg font-semibold text-slate-900 mb-2">{step.title}</h3>
-                  <p className="text-slate-700 leading-relaxed mb-4">{step.narrative}</p>
-
-                  {/* Concepts */}
-                  <div className="flex flex-wrap gap-2">
-                    {step.conceptIds.map(conceptId => {
-                      const concept = model.concepts.find(c => c.id === conceptId);
-                      return concept ? (
-                        <button
-                          key={conceptId}
-                          onClick={() => onSelectConcept(conceptId)}
-                          className="px-2 py-1 text-xs rounded-md transition-all hover:shadow-sm bg-slate-100 text-slate-700 hover:bg-slate-200 border border-transparent"
-                        >
-                          {concept.label}
-                        </button>
-                      ) : null;
-                    })}
-                  </div>
-
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default App;
