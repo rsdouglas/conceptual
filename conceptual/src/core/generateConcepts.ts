@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+
 import ejs from 'ejs';
 
 import {
@@ -15,6 +16,8 @@ import {
   StoryView,
 } from '../types/model.js';
 import { extractSnippets } from './extractSnippets.js';
+import { LanguageAdapter } from './languages/LanguageAdapter.js';
+import { TypeScriptAdapter } from './languages/typescript/TypeScriptAdapter.js';
 import {
   callLLM,
   LLMEnv,
@@ -23,11 +26,7 @@ import {
   FileInfo,
   scanRepo,
 } from './scanRepo.js';
-import {
-  SymbolInfo,
-} from './tsSymbols.js';
-import { LanguageAdapter } from './languages/LanguageAdapter.js';
-import { TypeScriptAdapter } from './languages/typescript/TypeScriptAdapter.js';
+import { SymbolInfo } from './tsSymbols.js';
 
 export interface AnalyzeOptions {
   repoRoot: string;
@@ -311,16 +310,25 @@ Relationships:
 ${JSON.stringify(relationshipsText, null, 2)}
 
 Your job:
-- Design a small set of **views** (3–7) that help a human understand this model.
+- Design a small set of HIGH LEVEL **views** (3-7) that help a NON-TECHNICAL, EXECUTIVE audience understand this model.
 - Think of each view as a **single story** or **single question** this diagram answers.
+- Views should focus on business / domain ideas, not technical implementation.
 - Examples:
   - "System overview"
   - "Data request lifecycle"
-  - "Artifacts and their structure"
-  - "LLM / implementation plumbing"
-  - "Data store and persistence"
+  - "Who are the key actors and what do they do?"
+  - "What are the main artifacts and how are they related?"
 
 ### Very important constraints
+
+0. **Audience and abstraction level**
+   - Assume the reader is an executive / product leader, not an engineer.
+   - Prefer **business / domain concepts** and plain language.
+   - Avoid or minimise:
+     - infrastructure (queues, databases, workers, containers, DOs, etc.),
+     - low-level technical details (LLM tools, API methods, schemas),
+     - configuration / tuning concepts unless essential to the story.
+   - It is OK to include 1-2 technical concepts in a view *only if* they are crucial to understanding that high-level story.
 
 1. **Small views, not hairballs**
    - Each view MUST have:
@@ -337,16 +345,18 @@ Your job:
 3. **One narrative per view**
    - Prefer views that answer things like:
      - "What is the lifecycle of a data request from start to finish?"
+     - "Who are the key actors and how do they interact?"
      - "What are the main artifacts and how are they related?"
-     - "Which components participate in LLM processing?"
    - Avoid mixing:
-     - high-level lifecycle + low-level implementation details in the same view
-     - too many different phases/domains in one diagram
+     - early and late lifecycle phases in one diagram if it becomes confusing,
+     - high-level lifecycle + low-level implementation details in the same view,
+     - multiple unrelated domains in one diagram.
 
 4. **Use groups as swimlanes / zones**
-   - For each view, create **2–5 groups** that act as swimlanes or zones (e.g. "Slack", "Data request", "LLM iteration", "Review & execution", "Storage").
-   - Each concept in the view should belong to exactly one group.
+   - For each view, imagine **2-5 groups** that act as swimlanes or zones (e.g. "Customer / User", "Slack", "Core process", "Review & decision", "Systems of record").
+   - Each concept in the view should conceptually belong to exactly one group.
    - Groups should support a left-to-right or top-to-bottom reading order (e.g. origin → core object → processing → outcome).
+   - The goal is to make the flow easy to follow for a non-technical reader.
 
 5. **Directional flow**
    - Prefer relationships that mostly flow **left→right** or **top→bottom** across groups.
@@ -361,12 +371,14 @@ Your job:
 
 Classify each view with a simple \`kind\` to hint at how it should be rendered:
 
-- "overview"      – high-level system or subsystem overview
-- "lifecycle"     – phases or stages over time
-- "structure"     – how parts/artefacts of a core thing relate
-- "implementation"– technical / LLM / plumbing details
-- "datastore"     – persistence / storage-centric view
-- "other"         – anything else
+- "overview"      - high-level system or subsystem overview (PREFERRED for executives)
+- "lifecycle"     - phases or stages over time (PREFERRED for executives)
+- "structure"     - how parts/artefacts of a core thing relate
+- "implementation"- technical / LLM / plumbing details (AVOID unless absolutely necessary)
+- "datastore"     - persistence / storage-centric view (RARE for executives)
+- "other"         - anything else
+
+When in doubt for an executive audience, prefer "overview" or "lifecycle".
 
 ### Output format
 
@@ -378,14 +390,15 @@ Return JSON shaped like:
       "id": "data-request-lifecycle",
       "name": "Data request lifecycle",
       "kind": "lifecycle",
-      "description": "High-level lifecycle of a data request from Slack through LLM iteration and review to execution.",
-      "conceptIds": ["...", "..."],          // 4–8 items
-      "relationshipIds": ["...", "..."],     // 4–10 items
+      "description": "High-level lifecycle of a data request from initial request through processing to final decision/outcome.",
+      "conceptIds": ["...", "..."],          // 4-8 items
+      "relationshipIds": ["...", "..."]      // 4-10 items
     }
   ]
 }
 
 Only return JSON.
+
 `.trim();
 }
 
@@ -430,7 +443,7 @@ ${JSON.stringify(relationshipsText, null, 2)}
 
 # Your Task
 
-Generate **2–5 high-quality story views**.
+Generate **2-5 high-quality story views**.
 
 Each story view is a coherent scenario, such as:
 
@@ -443,15 +456,15 @@ Each story view is a coherent scenario, such as:
 ## Requirements for Story Views
 
 ### 1. Temporal narrative
-Each story must be a sequence of **3–7 steps** that unfold over time.
+Each story must be a sequence of **3-7 steps** that unfold over time.
 
 ### 2. Step structure
 Each step must include:
 
 - **title**  
-- **narrative** (1–3 sentences)
-- **conceptIds** (2–6 concepts used in this moment)
-- **relationshipIds** (1–5 relationships driving this moment)
+- **narrative** (1-3 sentences)
+- **conceptIds** (2-6 concepts used in this moment)
+- **relationshipIds** (1-5 relationships driving this moment)
 - Optional: **primaryConceptIds**, **primaryRelationshipIds**
 
 ### 4. No new IDs
@@ -494,7 +507,7 @@ Return **ONLY JSON** in the following structure:
       "id": "kebab-case-id",
       "name": "Human readable story name",
       "kind": "user_flow",
-      "description": "1–3 sentence overview.",
+      "description": "1-3 sentence overview.",
       "tags": ["optional", "tags"],
       "focusConceptId": "optional-concept-id",
       "steps": [
@@ -502,7 +515,7 @@ Return **ONLY JSON** in the following structure:
           "id": "kebab-step-id",
           "index": 0,
           "title": "Step title",
-          "narrative": "1–3 sentence explanation.",
+          "narrative": "1-3 sentence explanation.",
           "conceptIds": ["concept-a", "concept-b"],
           "relationshipIds": ["rel-1"],
           "primaryConceptIds": ["optional"],

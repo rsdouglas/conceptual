@@ -26,7 +26,7 @@ export interface ConceptProject {
   name: string;
 
   /**
-   * Short summary (1–3 sentences) of what this project is about.
+   * Short summary (1-3 sentences) of what this project is about.
    * Ideal for:
    * - README-style overviews
    * - LLM context
