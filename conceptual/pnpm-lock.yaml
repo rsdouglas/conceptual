@@ -21,6 +21,9 @@ importers:
         specifier: ^3.3.2
         version: 3.3.2
     devDependencies:
+      '@types/ejs':
+        specifier: ^3.1.5
+        version: 3.1.5
       '@types/node':
         specifier: ^20.19.25
         version: 20.19.25
@@ -188,6 +191,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@types/ejs@3.1.5':
+    resolution: {integrity: sha512-nv+GSx77ZtXiJzwKdsASqi+YQ5Z7vwHsTP0JY2SiQgjGckkBRKZnk8nIM+7oUZ1VCtuTz0+By4qVR7fqzp/Dfg==}
 
   '@types/node@20.19.25':
     resolution: {integrity: sha512-ZsJzA5thDQMSQO788d7IocwwQbI8B5OPzmqNvpf3NY/+MHDAS759Wo0gd2WQeXYt5AAAQjzcrTVC6SKCuYgoCQ==}
@@ -362,6 +368,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.12':
     optional: true
+
+  '@types/ejs@3.1.5': {}
 
   '@types/node@20.19.25':
     dependencies:

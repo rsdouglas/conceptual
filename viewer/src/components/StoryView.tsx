@@ -4,7 +4,6 @@ import {
     ChevronRight,
     Network,
 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
 
 import type {
     ConceptModel,
@@ -17,15 +16,13 @@ interface Props {
     storyView: StoryViewType;
     model: ConceptModel;
     onBack: () => void;
-    onSelectConcept: (id: string) => void;
-    navigate: any;
+    onSelectConcept: (id: string | null) => void;
 }
 
-export function StoryView({ storyView, model, onBack, onSelectConcept, navigate }: Props) {
+export function StoryView({ storyView, model, onBack, onSelectConcept }: Props) {
     const [stepThroughMode, setStepThroughMode] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [showDiagram, setShowDiagram] = useState(false);
-    const location = useLocation();
 
     // Reset state when story changes
     useEffect(() => {

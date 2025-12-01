@@ -12,7 +12,6 @@ import type {
     Concept,
     ConceptProject,
 } from '../../../conceptual/src/types/model';
-import { NodeDetailPanel } from './NodeDetailPanel';
 
 interface Props {
     project: ConceptProject;

@@ -205,8 +205,7 @@ function StoryRoute({ project }: { project: ConceptProject }) {
           storyView={storyView}
           model={model}
           onBack={() => navigate(`/model/${modelId}`)}
-          onSelectConcept={(id) => setSearchParams({ concept: id })}
-          navigate={navigate}
+          onSelectConcept={(id) => setSearchParams(id ? { concept: id } : {})}
         />
       </div>
 
